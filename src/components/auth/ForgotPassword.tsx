@@ -8,7 +8,7 @@ interface ForgotPasswordProps {
 }
 
 export function ForgotPassword({ onBack }: ForgotPasswordProps) {
-  const { resetPassword } = useAuth();
+  const { resetPassword } = useAuth() as any;
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);

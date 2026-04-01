@@ -203,25 +203,31 @@ const Sidebar = ({ activePage, setActivePage, onLogout }: {
   );
 };
 
-const Header = () => (
-  <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-end px-8 sticky top-0 z-10">
-    <div className="flex items-center space-x-6">
-      <button className="relative text-gray-500 hover:text-gray-700">
-        <Bell size={20} />
-        <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-      </button>
-      <div className="flex items-center space-x-3 border-l pl-6 border-gray-200">
-        <div className="text-right">
-          <p className="text-sm font-bold">Yogesh Chodankar</p>
-          <p className="text-xs text-gray-500">Administrator</p>
-        </div>
-        <div className="w-10 h-10 bg-[#1B1A16] rounded-full flex items-center justify-center text-white font-bold">
-          YC
+const Header = ({ user }: { user: any }) => {
+  const displayName = user?.full_name || user?.username || "User";
+  const initials = displayName.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 2);
+  const roleLabel = user?.role === "admin" ? "Administrator" : user?.role === "moderator" ? "Moderator" : "User";
+
+  return (
+    <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-end px-8 sticky top-0 z-10">
+      <div className="flex items-center space-x-6">
+        <button className="relative text-gray-500 hover:text-gray-700">
+          <Bell size={20} />
+          <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+        </button>
+        <div className="flex items-center space-x-3 border-l pl-6 border-gray-200">
+          <div className="text-right">
+            <p className="text-sm font-bold">{displayName}</p>
+            <p className="text-xs text-gray-500">{roleLabel}</p>
+          </div>
+          <div className="w-10 h-10 bg-[#1B1A16] rounded-full flex items-center justify-center text-white font-bold">
+            {initials}
+          </div>
         </div>
       </div>
-    </div>
-  </header>
-);
+    </header>
+  );
+};
 
 const MessageBatchView = ({ message, onBack }: { message: any; onBack: () => void }) => {
   const [activeTab, setActiveTab] = useState("All");
@@ -1498,8 +1504,8 @@ const DashboardContent = () => {
 // --- Main App Component ---
 
 export default function App() {
-  const { session, loading: authLoading, signIn, signOut, resetPassword } = useAuth();
-  const isLoggedIn = !!session;
+  const { user, loading: authLoading, signIn, signOut, resetPassword } = useAuth() as any;
+  const isLoggedIn = !!user;
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [activePage, setActivePage] = useState<Page>("dashboard");
 
@@ -1519,7 +1525,7 @@ export default function App() {
     try {
       await signIn(username, password);
     } catch (err) {
-      setLoginError(err instanceof Error ? err.message : "Invalid email or password");
+      setLoginError(err instanceof Error ? err.message : "Invalid username or password");
     } finally {
       setLoginLoading(false);
     }
@@ -1535,8 +1541,8 @@ export default function App() {
     setIsResetSent(true);
   };
 
-  const handleLogout = async () => {
-    await signOut();
+  const handleLogout = () => {
+    signOut();
   };
 
   if (authLoading) {
@@ -1587,17 +1593,17 @@ export default function App() {
                   <form onSubmit={handleLogin} className="w-full space-y-6" id="login-form">
                     <div className="space-y-2">
                       <label htmlFor="username" className="block text-sm font-medium text-gray-700">
-                        Email
+                        Username or Email
                       </label>
                       <input
-                        type="email"
+                        type="text"
                         id="username"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
                         className="w-full px-4 py-3 rounded-md border border-gray-300 focus:ring-2 focus:ring-[#1B1A16] focus:border-transparent outline-none transition-all"
-                        placeholder="Enter your email"
+                        placeholder="Enter your username or email"
                         required
-                        autoComplete="email"
+                        autoComplete="username"
                       />
                     </div>
 
@@ -1743,7 +1749,7 @@ export default function App() {
 
       {/* Main Content (RHS) */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header />
+        <Header user={user} />
         <main className="flex-1 overflow-y-auto">
           <AnimatePresence mode="wait">
             {activePage === "dashboard" && (
