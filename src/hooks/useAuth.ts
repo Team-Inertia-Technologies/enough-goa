@@ -1,57 +1,81 @@
 import { useState, useEffect } from 'react';
-import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+export interface AppUser {
+  id: string;
+  username: string;
+  email: string;
+  full_name: string | null;
+  role: 'admin' | 'moderator' | 'user';
+}
+
 interface AuthState {
-  session: Session | null;
-  user: User | null;
+  user: AppUser | null;
   loading: boolean;
 }
 
 interface AuthActions {
-  signIn: (email: string, password: string) => Promise<void>;
-  signOut: () => Promise<void>;
-  resetPassword: (email: string) => Promise<void>;
+  signIn: (login: string, password: string) => Promise<void>;
+  signOut: () => void;
 }
 
+const SESSION_KEY = 'enough_goa_user';
+
+// ── Hook ───────────────────────────────────────────────────────────────────────
+
 export function useAuth(): AuthState & AuthActions {
-  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Rehydrate session from localStorage on mount
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
+    try {
+      const stored = localStorage.getItem(SESSION_KEY);
+      if (stored) setUser(JSON.parse(stored) as AppUser);
+    } catch {
+      localStorage.removeItem(SESSION_KEY);
+    } finally {
       setLoading(false);
-    });
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
-    return () => listener.subscription.unsubscribe();
+    }
   }, []);
 
-  async function signIn(email: string, password: string) {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
+  /**
+   * Calls the `authenticate_user` Postgres RPC.
+   * Password comparison happens entirely server-side via pgcrypto —
+   * the hash is never sent to the browser.
+   */
+  async function signIn(login: string, password: string): Promise<void> {
+    const { data, error } = await supabase.rpc('authenticate_user', {
+      p_login: login.trim(),
+      p_password: password,
+    });
+
+    if (error) throw new Error(error.message);
+
+    const rows = data as AppUser[] | null;
+    if (!rows || rows.length === 0) {
+      throw new Error('Invalid username/email or password');
+    }
+
+    const authedUser = rows[0];
+    localStorage.setItem(SESSION_KEY, JSON.stringify(authedUser));
+    setUser(authedUser);
   }
 
-  async function signOut() {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+  function signOut(): void {
+    localStorage.removeItem(SESSION_KEY);
+    setUser(null);
   }
 
-  async function resetPassword(email: string) {
-    const { error } = await supabase.auth.resetPasswordForEmail(email);
-    if (error) throw error;
+  // Kept for API compatibility with the forgot-password flow in App.tsx
+  // (actual email delivery requires an edge function — placeholder for now)
+  async function resetPassword(_email: string): Promise<void> {
+    // TODO: implement via Supabase Edge Function + password_reset_tokens table
+    return Promise.resolve();
   }
 
-  return {
-    session,
-    user: session?.user ?? null,
-    loading,
-    signIn,
-    signOut,
-    resetPassword,
-  };
+  return { user, loading, signIn, signOut, resetPassword } as AuthState &
+    AuthActions & { resetPassword: (e: string) => Promise<void> };
 }
