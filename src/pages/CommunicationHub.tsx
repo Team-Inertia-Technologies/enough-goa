@@ -27,6 +27,7 @@ export function CommunicationHub() {
       body: draft.body,
       media_url: draft.mediaUrl,
       status: 'sending',
+      sender: null,
       recipient_count: selectedIds.length,
       sent_count: 0,
       failed_count: 0,

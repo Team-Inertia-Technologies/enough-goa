@@ -43,17 +43,14 @@ export interface Database {
 export interface GuestRow {
   id: string;
   name: string;
-  phone: string;
+  mobile: string;      // WhatsApp/phone number
   taluka: string;
   village: string | null;
-  invited: boolean;
-  attended: boolean;
-  notes: string | null;
+  email: string | null;
   created_at: string;
-  updated_at: string;
 }
 
-export type GuestInsert = Omit<GuestRow, 'id' | 'created_at' | 'updated_at'>;
+export type GuestInsert = Omit<GuestRow, 'id' | 'created_at'>;
 export type GuestUpdate = Partial<GuestInsert>;
 
 // Friendly alias used throughout the app
@@ -65,10 +62,11 @@ export type BatchStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed';
 
 export interface MessageBatchRow {
   id: string;
-  title: string;
+  title: string;       // shown as "Messages" column in UI
   body: string;
   media_url: string | null;
   status: BatchStatus;
+  sender: string | null;
   recipient_count: number;
   sent_count: number;
   failed_count: number;
@@ -121,8 +119,6 @@ export type AppEvent = EventRow;
 
 export interface DashboardStats {
   totalGuests: number;
-  invitedGuests: number;
-  attendedGuests: number;
   totalBatches: number;
   messagesSent: number;
   talukaCounts: Record<string, number>;

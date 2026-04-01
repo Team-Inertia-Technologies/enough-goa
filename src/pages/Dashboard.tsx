@@ -37,14 +37,14 @@ export function Dashboard() {
           color="bg-blue-50 text-blue-600"
         />
         <StatCard
-          title="Invited"
-          value={stats.invitedGuests}
+          title="Message Batches"
+          value={stats.totalBatches}
           icon={<CheckSquare size={20} />}
           color="bg-emerald-50 text-emerald-600"
         />
         <StatCard
-          title="Attended"
-          value={stats.attendedGuests}
+          title="Talukas Covered"
+          value={Object.keys(stats.talukaCounts).length}
           icon={<CheckSquare size={20} />}
           color="bg-purple-50 text-purple-600"
         />

@@ -26,7 +26,6 @@ export function GuestTable({ guests, loading, onAdd, onEdit, onDelete }: GuestTa
 
   return (
     <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
-      {/* Header */}
       <div className="flex items-center justify-between border-b px-5 py-4">
         <h2 className="font-semibold text-gray-800">Guests</h2>
         <Button size="sm" onClick={onAdd}>
@@ -47,11 +46,10 @@ export function GuestTable({ guests, loading, onAdd, onEdit, onDelete }: GuestTa
             <thead>
               <tr className="border-b bg-gray-50 text-left text-xs text-gray-500 uppercase tracking-wide">
                 <th className="px-5 py-3">Name</th>
-                <th className="px-5 py-3">Phone</th>
+                <th className="px-5 py-3">Mobile</th>
                 <th className="px-5 py-3">Taluka</th>
                 <th className="px-5 py-3">Village</th>
-                <th className="px-5 py-3">Invited</th>
-                <th className="px-5 py-3">Attended</th>
+                <th className="px-5 py-3">Email</th>
                 <th className="px-5 py-3" />
               </tr>
             </thead>
@@ -59,15 +57,10 @@ export function GuestTable({ guests, loading, onAdd, onEdit, onDelete }: GuestTa
               {guests.map((guest) => (
                 <tr key={guest.id} className="hover:bg-gray-50/50">
                   <td className="px-5 py-3 font-medium text-gray-800">{guest.name}</td>
-                  <td className="px-5 py-3 text-gray-600">{guest.phone}</td>
+                  <td className="px-5 py-3 text-gray-600">{guest.mobile}</td>
                   <td className="px-5 py-3 text-gray-600">{guest.taluka}</td>
                   <td className="px-5 py-3 text-gray-600">{guest.village ?? '—'}</td>
-                  <td className="px-5 py-3">
-                    <StatusBadge active={guest.invited} />
-                  </td>
-                  <td className="px-5 py-3">
-                    <StatusBadge active={guest.attended} />
-                  </td>
+                  <td className="px-5 py-3 text-gray-600">{guest.email ?? '—'}</td>
                   <td className="px-5 py-3">
                     <div className="flex items-center gap-2">
                       <button
@@ -92,16 +85,5 @@ export function GuestTable({ guests, loading, onAdd, onEdit, onDelete }: GuestTa
         </div>
       )}
     </div>
-  );
-}
-
-function StatusBadge({ active }: { active: boolean }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium
-        ${active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}
-    >
-      {active ? 'Yes' : 'No'}
-    </span>
   );
 }

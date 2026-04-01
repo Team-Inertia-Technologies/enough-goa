@@ -13,12 +13,10 @@ interface GuestFormProps {
 
 const EMPTY: GuestInsert = {
   name: '',
-  phone: '',
+  mobile: '',
   taluka: '',
   village: '',
-  invited: false,
-  attended: false,
-  notes: '',
+  email: '',
 };
 
 export function GuestForm({ open, onClose, onSubmit, initial }: GuestFormProps) {
@@ -48,31 +46,10 @@ export function GuestForm({ open, onClose, onSubmit, initial }: GuestFormProps) 
     <Modal open={open} onClose={onClose} title={initial ? 'Edit Guest' : 'Add Guest'}>
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <Input label="Name" value={form.name} onChange={(e) => set('name', e.target.value)} required />
-        <Input label="Phone" value={form.phone} onChange={(e) => set('phone', e.target.value)} required />
+        <Input label="Mobile" value={form.mobile} onChange={(e) => set('mobile', e.target.value)} required />
         <Input label="Taluka" value={form.taluka} onChange={(e) => set('taluka', e.target.value)} required />
         <Input label="Village" value={form.village ?? ''} onChange={(e) => set('village', e.target.value)} />
-        <Input label="Notes" value={form.notes ?? ''} onChange={(e) => set('notes', e.target.value)} />
-
-        <div className="flex gap-6">
-          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={form.invited}
-              onChange={(e) => set('invited', e.target.checked)}
-              className="accent-emerald-600"
-            />
-            Invited
-          </label>
-          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={form.attended}
-              onChange={(e) => set('attended', e.target.checked)}
-              className="accent-emerald-600"
-            />
-            Attended
-          </label>
-        </div>
+        <Input label="Email" type="email" value={form.email ?? ''} onChange={(e) => set('email', e.target.value)} />
 
         {error && <p className="text-sm text-red-600">{error}</p>}
 

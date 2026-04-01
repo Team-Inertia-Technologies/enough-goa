@@ -4,6 +4,10 @@
  */
 
 import { useState, FormEvent } from "react";
+import { useAuth } from './hooks/useAuth';
+import { useGuests } from './hooks/useGuests';
+import { useDashboard } from './hooks/useDashboard';
+import { useMessages } from './hooks/useMessages';
 import {
   Eye,
   EyeOff,
@@ -443,21 +447,10 @@ const MessageBatchView = ({ message, onBack }: { message: any; onBack: () => voi
   );
 };
 
-const talukaGuests = [
-  { id: 1, name: "Janardan Keny", mobile: "+91997014069", taluka: "Bardez", email: "jaykeny15@gmail.com" },
-  { id: 2, name: "Myron Pinto", mobile: "+91703031233", taluka: "Salcete", email: "pintomyron57@gmail.com" },
-  { id: 3, name: "Abcd Efgh", mobile: "91987654321", taluka: "Bardez", email: "-NA-" },
-  { id: 4, name: "Efgh Abcd", mobile: "91987654320", taluka: "Pernem", email: "-NA-" },
-  { id: 5, name: "Yogesh Chodankar", mobile: "91919049019382", taluka: "Bardez", email: "yogesh@teaminertia.com" },
-  { id: 6, name: "Laxman Kubal", mobile: "91917350807077", taluka: "Pernem", email: "-NA-" },
-  { id: 7, name: "Anton Mousimann", mobile: "+9191123456789", taluka: "Bicholim", email: "mousimann@email.com" },
-  { id: 8, name: "David Noronha", mobile: "91 91779824684", taluka: "Salcete", email: "david@teaminertia.com" },
-  { id: 9, name: "Daavid Noronha", mobile: "91917798246842", taluka: "Canacona", email: "-NA-" },
-];
-
 const TalukaVillageContent = () => {
+  const { guests, loading: guestsLoading } = useGuests();
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedGuests, setSelectedGuests] = useState<number[]>([]);
+  const [selectedGuests, setSelectedGuests] = useState<string[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   
@@ -468,7 +461,7 @@ const TalukaVillageContent = () => {
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
 
-  const filteredGuests = talukaGuests.filter(guest => 
+  const filteredGuests = guests.filter(guest =>
     guest.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     guest.taluka.toLowerCase().includes(searchTerm.toLowerCase()) ||
     guest.mobile.includes(searchTerm)
@@ -482,8 +475,8 @@ const TalukaVillageContent = () => {
     }
   };
 
-  const toggleGuest = (id: number) => {
-    setSelectedGuests(prev => 
+  const toggleGuest = (id: string) => {
+    setSelectedGuests(prev =>
       prev.includes(id) ? prev.filter(g => g !== id) : [...prev, id]
     );
   };
@@ -561,27 +554,32 @@ const TalukaVillageContent = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {filteredGuests.map((guest, idx) => (
-                <tr key={guest.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3">
-                    <input 
-                      type="checkbox" 
-                      className="rounded border-gray-300 cursor-pointer"
-                      checked={selectedGuests.includes(guest.id)}
-                      onChange={() => toggleGuest(guest.id)}
-                    />
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600 border-r border-gray-200">{idx + 1}</td>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900 border-r border-gray-200">{guest.name}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600 border-r border-gray-200">{guest.mobile}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600 border-r border-gray-200">{guest.taluka}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{guest.email}</td>
+              {guestsLoading ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-gray-400 italic">Loading guests…</td>
                 </tr>
-              ))}
-              {filteredGuests.length === 0 && (
+              ) : filteredGuests.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-gray-500 italic">No guests found matching your search.</td>
                 </tr>
+              ) : (
+                filteredGuests.map((guest, idx) => (
+                  <tr key={guest.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        className="rounded border-gray-300 cursor-pointer"
+                        checked={selectedGuests.includes(guest.id)}
+                        onChange={() => toggleGuest(guest.id)}
+                      />
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600 border-r border-gray-200">{idx + 1}</td>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900 border-r border-gray-200">{guest.name}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600 border-r border-gray-200">{guest.mobile}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600 border-r border-gray-200">{guest.taluka}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{guest.email ?? '—'}</td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
@@ -826,6 +824,8 @@ const TalukaVillageContent = () => {
 };
 
 const CommunicationHubContent = () => {
+  const { guests, loading: guestsLoading } = useGuests();
+  const { batches: messageBatches, loading: batchesLoading } = useMessages();
   const [showQR, setShowQR] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -834,7 +834,7 @@ const CommunicationHubContent = () => {
   const [selectedTaluka, setSelectedTaluka] = useState("All");
   const [selectedVillage, setSelectedVillage] = useState("All");
   const [viewingMessage, setViewingMessage] = useState<any | null>(null);
-  
+
   // Template Form State
   const [templateName, setTemplateName] = useState("");
   const [messageText, setMessageText] = useState("");
@@ -843,35 +843,21 @@ const CommunicationHubContent = () => {
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
 
   const [connectedInstance] = useState({ name: "Yogesh Chodankar", mobile: "+91 98765 43210" });
-  const [messages] = useState([
-    { taluka: "Bardez", sender: "Yogesh Chodankar", date: "20/07/2024", time: "12:00 AM", sent: 1, delivered: 0 },
-    { taluka: "Pernem", sender: "Yogesh Chodankar", date: "20/07/2024", time: "12:00 AM", sent: 1, delivered: 0 },
-    { taluka: "Bicholim", sender: "Yogesh Chodankar", date: "20/07/2024", time: "12:00 AM", sent: 1, delivered: 0 },
-    { taluka: "Salcete", sender: "Yogesh Chodankar", date: "20/07/2024", time: "12:00 AM", sent: 1, delivered: 0 },
-    { taluka: "Canacona", sender: "Yogesh Chodankar", date: "20/07/2024", time: "12:00 AM", sent: 1, delivered: 0 },
-    { taluka: "Bardez", sender: "Yogesh Chodankar", date: "20/07/2024", time: "12:00 AM", sent: 1, delivered: 0 },
-    { taluka: "Pernem", sender: "Yogesh Chodankar", date: "20/07/2024", time: "12:00 AM", sent: 1, delivered: 0 },
-  ]);
 
-  const talukaPeople = [
-    { id: '1', name: 'Rajesh Kumar', mobile: '+91 98230 12345', taluka: 'Bardez', village: 'Mapusa' },
-    { id: '2', name: 'Suresh Raina', mobile: '+91 98230 23456', taluka: 'Pernem', village: 'Mandrem' },
-    { id: '3', name: 'Amit Shah', mobile: '+91 98230 34567', taluka: 'Bicholim', village: 'Sanquelim' },
-    { id: '4', name: 'Nitin Gadkari', mobile: '+91 98230 45678', taluka: 'Salcete', village: 'Margao' },
-    { id: '5', name: 'Pramod Sawant', mobile: '+91 98230 56789', taluka: 'Canacona', village: 'Agonda' },
-    { id: '6', name: 'Vishwajit Rane', mobile: '+91 98230 67890', taluka: 'Sattari', village: 'Valpoi' },
-    { id: '7', name: 'Rohan Khaunte', mobile: '+91 98230 78901', taluka: 'Bardez', village: 'Porvorim' },
-    { id: '8', name: 'Atanasio Monserrate', mobile: '+91 98230 89012', taluka: 'Tiswadi', village: 'Panjim' },
-  ];
+  // Derive taluka/village lists from real guests
+  const talukas = ["All", ...Array.from(new Set(guests.map(g => g.taluka).filter(Boolean)))];
+  const villages = ["All", ...Array.from(new Set(
+    guests
+      .filter(g => selectedTaluka === "All" || g.taluka === selectedTaluka)
+      .map(g => g.village)
+      .filter((v): v is string => !!v)
+  ))];
 
-  const filteredPeople = talukaPeople.filter(person => {
-    const talukaMatch = selectedTaluka === "All" || person.taluka === selectedTaluka;
-    const villageMatch = selectedVillage === "All" || person.village === selectedVillage;
+  const filteredPeople = guests.filter(g => {
+    const talukaMatch = selectedTaluka === "All" || g.taluka === selectedTaluka;
+    const villageMatch = selectedVillage === "All" || g.village === selectedVillage;
     return talukaMatch && villageMatch;
   });
-
-  const talukas = ["All", ...Array.from(new Set(talukaPeople.map(p => p.taluka)))];
-  const villages = ["All", ...Array.from(new Set(talukaPeople.filter(p => selectedTaluka === "All" || p.taluka === selectedTaluka).map(p => p.village)))];
 
   const handleSelectAll = () => {
     const allFilteredIds = filteredPeople.map(p => p.id);
@@ -1364,27 +1350,40 @@ const CommunicationHubContent = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
-            {messages.map((msg, idx) => (
-              <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                <td 
-                  className="px-6 py-4 text-sm font-bold text-gray-900 cursor-pointer hover:text-[#1B1A16] hover:underline"
-                  onClick={() => setViewingMessage(msg)}
-                >
-                  {msg.taluka}
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-600 border-l border-gray-200">{msg.sender}</td>
-                <td className="px-6 py-4 text-sm text-gray-600 border-l border-gray-200">{msg.date}</td>
-                <td className="px-6 py-4 text-sm text-gray-600 border-l border-gray-200">{msg.time}</td>
-                <td className="px-6 py-4 text-sm text-gray-900 border-l border-gray-200 text-center font-medium">{msg.sent}</td>
-                <td className="px-6 py-4 text-sm text-gray-900 border-l border-gray-200 text-center font-medium">{msg.delivered}</td>
+            {batchesLoading ? (
+              <tr>
+                <td colSpan={6} className="px-6 py-8 text-center text-gray-400 italic">Loading batches…</td>
               </tr>
-            ))}
+            ) : messageBatches.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-6 py-8 text-center text-gray-500 italic">No message batches yet.</td>
+              </tr>
+            ) : (
+              messageBatches.map((batch) => {
+                const d = new Date(batch.created_at);
+                return (
+                  <tr key={batch.id} className="hover:bg-gray-50 transition-colors">
+                    <td
+                      className="px-6 py-4 text-sm font-bold text-gray-900 cursor-pointer hover:text-[#1B1A16] hover:underline"
+                      onClick={() => setViewingMessage(batch)}
+                    >
+                      {batch.title}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600 border-l border-gray-200">{batch.sender ?? '—'}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600 border-l border-gray-200">{d.toLocaleDateString('en-IN')}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600 border-l border-gray-200">{d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</td>
+                    <td className="px-6 py-4 text-sm text-gray-900 border-l border-gray-200 text-center font-medium">{batch.sent_count}</td>
+                    <td className="px-6 py-4 text-sm text-gray-900 border-l border-gray-200 text-center font-medium">{batch.recipient_count}</td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
           <tfoot>
             <tr className="bg-gray-50 font-bold">
               <td colSpan={4} className="px-6 py-4 text-right text-sm text-gray-900">Total</td>
-              <td className="px-6 py-4 text-sm text-gray-900 text-center border-l border-gray-200">{messages.reduce((acc, curr) => acc + curr.sent, 0)}</td>
-              <td className="px-6 py-4 text-sm text-gray-900 text-center border-l border-gray-200">{messages.reduce((acc, curr) => acc + curr.delivered, 0)}</td>
+              <td className="px-6 py-4 text-sm text-gray-900 text-center border-l border-gray-200">{messageBatches.reduce((acc, b) => acc + b.sent_count, 0)}</td>
+              <td className="px-6 py-4 text-sm text-gray-900 text-center border-l border-gray-200">{messageBatches.reduce((acc, b) => acc + b.recipient_count, 0)}</td>
             </tr>
           </tfoot>
         </table>
@@ -1394,6 +1393,15 @@ const CommunicationHubContent = () => {
 };
 
 const DashboardContent = () => {
+  const { stats: dashStats, loading: statsLoading } = useDashboard();
+
+  const liveStats = [
+    { label: "Messages Sent", value: statsLoading ? "…" : (dashStats?.messagesSent ?? 0).toLocaleString(), icon: MessageSquare, color: "bg-blue-100 text-blue-600" },
+    { label: "People Onboard", value: statsLoading ? "…" : (dashStats?.totalGuests ?? 0).toLocaleString(), icon: UserPlus, color: "bg-green-100 text-green-600" },
+    { label: "Message Batches", value: statsLoading ? "…" : (dashStats?.totalBatches ?? 0).toLocaleString(), icon: CheckSquare, color: "bg-purple-100 text-purple-600" },
+    { label: "Talukas Covered", value: statsLoading ? "…" : Object.keys(dashStats?.talukaCounts ?? {}).length.toString(), icon: Calendar, color: "bg-orange-100 text-orange-600" },
+  ];
+
   return (
     <div className="p-8 space-y-8">
       {/* Welcome Section */}
@@ -1406,7 +1414,7 @@ const DashboardContent = () => {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat, idx) => (
+        {liveStats.map((stat, idx) => (
           <motion.div
             key={idx}
             initial={{ opacity: 0, y: 20 }}
@@ -1418,9 +1426,6 @@ const DashboardContent = () => {
               <div className={`p-3 rounded-lg ${stat.color}`}>
                 <stat.icon size={24} />
               </div>
-              <span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full">
-                +12.5%
-              </span>
             </div>
             <div className="mt-4">
               <h3 className="text-gray-500 text-sm font-medium">{stat.label}</h3>
@@ -1493,7 +1498,8 @@ const DashboardContent = () => {
 // --- Main App Component ---
 
 export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const { session, loading: authLoading, signIn, signOut, resetPassword } = useAuth();
+  const isLoggedIn = !!session;
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [activePage, setActivePage] = useState<Page>("dashboard");
 
@@ -1503,27 +1509,43 @@ export default function App() {
   const [password, setPassword] = useState("");
   const [forgotEmail, setForgotEmail] = useState("");
   const [isResetSent, setIsResetSent] = useState(false);
+  const [loginError, setLoginError] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
 
-  const handleLogin = (e: FormEvent) => {
+  const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
-    // Simple mock login
-    if (username && password) {
-      setIsLoggedIn(true);
+    setLoginError("");
+    setLoginLoading(true);
+    try {
+      await signIn(username, password);
+    } catch (err) {
+      setLoginError(err instanceof Error ? err.message : "Invalid email or password");
+    } finally {
+      setLoginLoading(false);
     }
   };
 
-  const handleForgotPassword = (e: FormEvent) => {
+  const handleForgotPassword = async (e: FormEvent) => {
     e.preventDefault();
-    if (forgotEmail) {
-      setIsResetSent(true);
+    try {
+      await resetPassword(forgotEmail);
+    } catch {
+      // show success anyway — don't leak whether the email exists
     }
+    setIsResetSent(true);
   };
 
-  const handleLogout = () => {
-    setIsLoggedIn(false);
-    setUsername("");
-    setPassword("");
+  const handleLogout = async () => {
+    await signOut();
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#FFFAF2] flex items-center justify-center">
+        <div className="animate-spin h-8 w-8 border-4 border-[#FFE400] border-t-transparent rounded-full" />
+      </div>
+    );
+  }
 
   if (!isLoggedIn) {
     return (
@@ -1565,16 +1587,17 @@ export default function App() {
                   <form onSubmit={handleLogin} className="w-full space-y-6" id="login-form">
                     <div className="space-y-2">
                       <label htmlFor="username" className="block text-sm font-medium text-gray-700">
-                        Username
+                        Email
                       </label>
                       <input
-                        type="text"
+                        type="email"
                         id="username"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
                         className="w-full px-4 py-3 rounded-md border border-gray-300 focus:ring-2 focus:ring-[#1B1A16] focus:border-transparent outline-none transition-all"
-                        placeholder="Enter your username"
+                        placeholder="Enter your email"
                         required
+                        autoComplete="email"
                       />
                     </div>
 
@@ -1611,11 +1634,15 @@ export default function App() {
                       </div>
                     </div>
 
+                    {loginError && (
+                      <p className="text-sm text-red-600 text-center -mt-2">{loginError}</p>
+                    )}
                     <button
                       type="submit"
-                      className="w-full bg-[#1B1A16] hover:bg-[#2d2c26] text-white font-bold py-4 rounded-md transition-all transform active:scale-[0.98] shadow-lg uppercase tracking-widest"
+                      disabled={loginLoading}
+                      className="w-full bg-[#1B1A16] hover:bg-[#2d2c26] text-white font-bold py-4 rounded-md transition-all transform active:scale-[0.98] shadow-lg uppercase tracking-widest disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      Login
+                      {loginLoading ? "Signing in…" : "Login"}
                     </button>
                   </form>
                 </motion.div>

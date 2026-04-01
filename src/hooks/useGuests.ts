@@ -26,7 +26,7 @@ export function useGuests(talukaFilter?: string): UseGuestsReturn {
 
       const { data, error: fetchError } = await query;
       if (fetchError) throw fetchError;
-      setGuests(data ?? []);
+      setGuests((data as Guest[]) ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch guests');
     } finally {
@@ -45,8 +45,9 @@ export function useGuests(talukaFilter?: string): UseGuestsReturn {
       .select()
       .single();
     if (error) throw error;
-    setGuests((prev) => [inserted, ...prev]);
-    return inserted;
+    const guest = inserted as Guest;
+    setGuests((prev) => [guest, ...prev]);
+    return guest;
   }
 
   async function updateGuest(id: string, data: GuestUpdate): Promise<Guest> {
@@ -57,8 +58,9 @@ export function useGuests(talukaFilter?: string): UseGuestsReturn {
       .select()
       .single();
     if (error) throw error;
-    setGuests((prev) => prev.map((g) => (g.id === id ? updated : g)));
-    return updated;
+    const guest = updated as Guest;
+    setGuests((prev) => prev.map((g) => (g.id === id ? guest : g)));
+    return guest;
   }
 
   async function deleteGuest(id: string): Promise<void> {

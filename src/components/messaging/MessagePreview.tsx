@@ -76,7 +76,7 @@ export function MessagePreview({ draft, guests, onBack, onSend }: MessagePreview
               />
               <div>
                 <p className="text-sm font-medium text-gray-800">{g.name}</p>
-                <p className="text-xs text-gray-500">{g.phone} · {g.taluka}</p>
+                <p className="text-xs text-gray-500">{g.mobile} · {g.taluka}</p>
               </div>
             </li>
           ))}
