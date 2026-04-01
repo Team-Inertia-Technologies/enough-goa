@@ -55,7 +55,7 @@ import {
 } from "recharts";
 
 // --- Types ---
-type Page = "dashboard" | "taluka" | "communication" | "users";
+type Page = "dashboard" | "taluka" | "communication" | "users" | "guests";
 
 // --- Mock Data ---
 const rsvpData = [
@@ -85,9 +85,10 @@ const Sidebar = ({ activePage, setActivePage, onLogout }: {
   const [isHovered, setIsHovered] = useState(false);
   const menuItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "guests", label: "Guests", icon: Users },
     { id: "taluka", label: "Taluka/Village", icon: MapPin },
     { id: "communication", label: "Communication Hub", icon: MessageSquare },
-    { id: "users", label: "Users", icon: Users },
+    { id: "users", label: "Users", icon: Settings },
   ];
 
   return (
@@ -436,6 +437,313 @@ const MessageBatchView = ({ message, onBack }: { message: any; onBack: () => voi
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const talukaVillageData = [
+  { id: 1, taluka: "Bardez", village: "Anjuna", district: "North Goa", status: "Active" },
+  { id: 2, taluka: "Bardez", village: "Calangute", district: "North Goa", status: "Active" },
+  { id: 3, taluka: "Salcete", village: "Margao", district: "South Goa", status: "Active" },
+  { id: 4, taluka: "Salcete", village: "Colva", district: "South Goa", status: "Active" },
+  { id: 5, taluka: "Pernem", village: "Arambol", district: "North Goa", status: "Inactive" },
+  { id: 6, taluka: "Pernem", village: "Mandrem", district: "North Goa", status: "Active" },
+  { id: 7, taluka: "Bicholim", village: "Sanquelim", district: "North Goa", status: "Active" },
+  { id: 8, taluka: "Canacona", village: "Palolem", district: "South Goa", status: "Active" },
+];
+
+const TalukaListingContent = () => {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [districtFilter, setDistrictFilter] = useState("All");
+  const [statusFilter, setStatusFilter] = useState("All");
+
+  const filteredData = talukaVillageData.filter(item => {
+    const matchesSearch = 
+      item.taluka.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.village.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesDistrict = districtFilter === "All" || item.district === districtFilter;
+    const matchesStatus = statusFilter === "All" || item.status === statusFilter;
+    return matchesSearch && matchesDistrict && matchesStatus;
+  });
+
+  return (
+    <div className="p-8 space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold text-[#1B1A16]">Taluka & Villages</h2>
+          <p className="text-sm text-gray-500">Manage your talukas and villages listing</p>
+        </div>
+        <button className="flex items-center space-x-2 px-6 py-3 bg-[#1B1A16] text-white rounded-xl font-bold hover:bg-[#2d2c26] transition-all shadow-lg">
+          <Plus size={20} />
+          <span>Add New</span>
+        </button>
+      </div>
+
+      {/* Filters Section */}
+      <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+            <input
+              type="text"
+              placeholder="Search taluka or village..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#FFE400] outline-none transition-all"
+            />
+          </div>
+          
+          <select 
+            value={districtFilter}
+            onChange={(e) => setDistrictFilter(e.target.value)}
+            className="px-4 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#FFE400] outline-none bg-white transition-all"
+          >
+            <option value="All">All Districts</option>
+            <option value="North Goa">North Goa</option>
+            <option value="South Goa">South Goa</option>
+          </select>
+
+          <select 
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-4 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#FFE400] outline-none bg-white transition-all"
+          >
+            <option value="All">All Status</option>
+            <option value="Active">Active</option>
+            <option value="Inactive">Inactive</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Listing Table */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">#</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Taluka Name</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Village Name</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">District</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {filteredData.map((item, index) => (
+                <tr key={item.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-6 py-4 text-sm text-gray-600 font-medium">{index + 1}</td>
+                  <td className="px-6 py-4 text-sm font-bold text-gray-900">{item.taluka}</td>
+                  <td className="px-6 py-4 text-sm text-gray-600">{item.village}</td>
+                  <td className="px-6 py-4 text-sm text-gray-600">
+                    <span className="flex items-center space-x-1">
+                      <MapPin size={14} className="text-gray-400" />
+                      <span>{item.district}</span>
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${
+                      item.status === "Active" 
+                        ? "bg-green-100 text-green-700" 
+                        : "bg-red-100 text-red-700"
+                    }`}>
+                      {item.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex justify-end space-x-2">
+                      <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                        <Edit size={16} />
+                      </button>
+                      <button className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {filteredData.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-6 py-12 text-center text-gray-500 italic">
+                    No records found matching your filters.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        
+        {/* Pagination Placeholder */}
+        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+          <p className="text-xs text-gray-500">Showing {filteredData.length} of {talukaVillageData.length} entries</p>
+          <div className="flex items-center space-x-2">
+            <button className="px-3 py-1 border border-gray-300 rounded-lg text-xs font-medium text-gray-500 hover:bg-white transition-all">Previous</button>
+            <button className="px-3 py-1 bg-[#1B1A16] text-white rounded-lg text-xs font-bold shadow-sm">1</button>
+            <button className="px-3 py-1 border border-gray-300 rounded-lg text-xs font-medium text-gray-500 hover:bg-white transition-all">Next</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const userData = [
+  { id: 1, name: "Yogesh Chodankar", username: "yogesh_c", email: "yogesh@teaminertia.com", role: "Administrator", createdAt: "2024-01-15 10:30 AM", lastLogin: "2024-04-01 09:45 AM", status: "Active" },
+  { id: 2, name: "Myron Pinto", username: "myron_p", email: "myron@teaminertia.com", role: "Manager", createdAt: "2024-01-20 02:15 PM", lastLogin: "2024-03-31 06:20 PM", status: "Active" },
+  { id: 3, name: "Janardan Keny", username: "janardan_k", email: "jaykeny15@gmail.com", role: "Editor", createdAt: "2024-02-05 11:00 AM", lastLogin: "2024-03-28 10:10 AM", status: "Inactive" },
+  { id: 4, name: "David Noronha", username: "david_n", email: "david@teaminertia.com", role: "Manager", createdAt: "2024-02-10 09:30 AM", lastLogin: "2024-04-01 08:00 AM", status: "Active" },
+  { id: 5, name: "Laxman Kubal", username: "laxman_k", email: "laxman@example.com", role: "Editor", createdAt: "2024-03-01 04:45 PM", lastLogin: "2024-03-30 03:25 PM", status: "Active" },
+];
+
+const UsersListingContent = () => {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [roleFilter, setRoleFilter] = useState("All");
+  const [statusFilter, setStatusFilter] = useState("All");
+
+  const filteredUsers = userData.filter(user => {
+    const matchesSearch = 
+      user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.email.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesRole = roleFilter === "All" || user.role === roleFilter;
+    const matchesStatus = statusFilter === "All" || user.status === statusFilter;
+    return matchesSearch && matchesRole && matchesStatus;
+  });
+
+  return (
+    <div className="p-8 space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold text-[#1B1A16]">User Management</h2>
+          <p className="text-sm text-gray-500">Manage system users and their access levels</p>
+        </div>
+        <button className="flex items-center space-x-2 px-6 py-3 bg-[#1B1A16] text-white rounded-xl font-bold hover:bg-[#2d2c26] transition-all shadow-lg">
+          <Plus size={20} />
+          <span>Add New User</span>
+        </button>
+      </div>
+
+      {/* Filters Section */}
+      <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+            <input
+              type="text"
+              placeholder="Search by name, username or email..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#FFE400] outline-none transition-all"
+            />
+          </div>
+          
+          <select 
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(e.target.value)}
+            className="px-4 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#FFE400] outline-none bg-white transition-all"
+          >
+            <option value="All">All Roles</option>
+            <option value="Administrator">Administrator</option>
+            <option value="Manager">Manager</option>
+            <option value="Editor">Editor</option>
+          </select>
+
+          <select 
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-4 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#FFE400] outline-none bg-white transition-all"
+          >
+            <option value="All">All Status</option>
+            <option value="Active">Active</option>
+            <option value="Inactive">Inactive</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Listing Table */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">#</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">User Info</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Username</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Role</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Created At</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Last Login</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {filteredUsers.map((user, index) => (
+                <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-6 py-4 text-sm text-gray-600 font-medium">{index + 1}</td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 font-bold text-xs">
+                        {user.name.split(' ').map(n => n[0]).join('')}
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-gray-900">{user.name}</p>
+                        <p className="text-xs text-gray-500">{user.email}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-600">{user.username}</td>
+                  <td className="px-6 py-4">
+                    <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${
+                      user.role === "Administrator" ? "bg-purple-100 text-purple-700" :
+                      user.role === "Manager" ? "bg-blue-100 text-blue-700" :
+                      "bg-gray-100 text-gray-700"
+                    }`}>
+                      {user.role}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-xs text-gray-500">{user.createdAt}</td>
+                  <td className="px-6 py-4 text-xs text-gray-500">{user.lastLogin}</td>
+                  <td className="px-6 py-4">
+                    <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${
+                      user.status === "Active" 
+                        ? "bg-green-100 text-green-700" 
+                        : "bg-red-100 text-red-700"
+                    }`}>
+                      {user.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex justify-end space-x-2">
+                      <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                        <Edit size={16} />
+                      </button>
+                      <button className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {filteredUsers.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-6 py-12 text-center text-gray-500 italic">
+                    No users found matching your filters.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        
+        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+          <p className="text-xs text-gray-500">Showing {filteredUsers.length} of {userData.length} users</p>
+          <div className="flex items-center space-x-2">
+            <button className="px-3 py-1 border border-gray-300 rounded-lg text-xs font-medium text-gray-500 hover:bg-white transition-all">Previous</button>
+            <button className="px-3 py-1 bg-[#1B1A16] text-white rounded-lg text-xs font-bold shadow-sm">1</button>
+            <button className="px-3 py-1 border border-gray-300 rounded-lg text-xs font-medium text-gray-500 hover:bg-white transition-all">Next</button>
           </div>
         </div>
       </div>
@@ -1741,9 +2049,9 @@ export default function App() {
                 <CommunicationHubContent />
               </motion.div>
             )}
-            {activePage === "taluka" && (
+            {activePage === "guests" && (
               <motion.div
-                key="taluka"
+                key="guests"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
@@ -1752,20 +2060,26 @@ export default function App() {
                 <TalukaVillageContent />
               </motion.div>
             )}
-            {activePage === "users" && (
+            {activePage === "taluka" && (
               <motion.div
-                key="other"
+                key="taluka"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
                 transition={{ duration: 0.3 }}
-                className="p-8 flex flex-col items-center justify-center h-full text-gray-400"
               >
-                <BarChart3 size={64} className="mb-4 opacity-20" />
-                <h2 className="text-2xl font-bold uppercase tracking-widest">
-                  {activePage.replace("-", " ")} Page
-                </h2>
-                <p className="mt-2">This section is currently under development.</p>
+                <TalukaListingContent />
+              </motion.div>
+            )}
+            {activePage === "users" && (
+              <motion.div
+                key="users"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.3 }}
+              >
+                <UsersListingContent />
               </motion.div>
             )}
           </AnimatePresence>
