@@ -1,19 +1,29 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import type { Guest, GuestInsert, GuestUpdate } from '../types/database';
+import type { GuestInsert, GuestUpdate, GuestWithNames } from '../types/database';
+
+const GUEST_SELECT = '*, talukas!taluka_id(name), villages!village_id(name)';
+
+function mapGuest(row: any): GuestWithNames {
+  return {
+    ...row,
+    taluka_name: (row.talukas as { name: string } | null)?.name ?? null,
+    village_name: (row.villages as { name: string } | null)?.name ?? null,
+  };
+}
 
 interface UseGuestsReturn {
-  guests: Guest[];
+  guests: GuestWithNames[];
   loading: boolean;
   error: string | null;
-  addGuest: (data: GuestInsert) => Promise<Guest>;
-  updateGuest: (id: string, data: GuestUpdate) => Promise<Guest>;
+  addGuest: (data: GuestInsert) => Promise<GuestWithNames>;
+  updateGuest: (id: string, data: GuestUpdate) => Promise<GuestWithNames>;
   deleteGuest: (id: string) => Promise<void>;
   refetch: () => Promise<void>;
 }
 
 export function useGuests(): UseGuestsReturn {
-  const [guests, setGuests] = useState<Guest[]>([]);
+  const [guests, setGuests] = useState<GuestWithNames[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,10 +33,10 @@ export function useGuests(): UseGuestsReturn {
     try {
       const { data, error: fetchError } = await supabase
         .from('guests')
-        .select('*')
+        .select(GUEST_SELECT)
         .order('created_at', { ascending: false });
       if (fetchError) throw fetchError;
-      setGuests((data as Guest[]) ?? []);
+      setGuests((data ?? []).map(mapGuest));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch guests');
     } finally {
@@ -36,18 +46,18 @@ export function useGuests(): UseGuestsReturn {
 
   useEffect(() => { fetchGuests(); }, [fetchGuests]);
 
-  async function addGuest(data: GuestInsert): Promise<Guest> {
-    const { data: inserted, error } = await supabase.from('guests').insert(data).select().single();
+  async function addGuest(data: GuestInsert): Promise<GuestWithNames> {
+    const { data: inserted, error } = await supabase.from('guests').insert(data).select(GUEST_SELECT).single();
     if (error) throw error;
-    const guest = inserted as Guest;
+    const guest = mapGuest(inserted);
     setGuests(prev => [guest, ...prev]);
     return guest;
   }
 
-  async function updateGuest(id: string, data: GuestUpdate): Promise<Guest> {
-    const { data: updated, error } = await supabase.from('guests').update(data).eq('id', id).select().single();
+  async function updateGuest(id: string, data: GuestUpdate): Promise<GuestWithNames> {
+    const { data: updated, error } = await supabase.from('guests').update(data).eq('id', id).select(GUEST_SELECT).single();
     if (error) throw error;
-    const guest = updated as Guest;
+    const guest = mapGuest(updated);
     setGuests(prev => prev.map(g => g.id === id ? guest : g));
     return guest;
   }

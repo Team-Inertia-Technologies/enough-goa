@@ -28,6 +28,11 @@ export interface Guest {
 export type GuestInsert = Omit<Guest, 'id' | 'created_at' | 'updated_at'>;
 export type GuestUpdate = Partial<GuestInsert>;
 
+export interface GuestWithNames extends Guest {
+  taluka_name: string | null;
+  village_name: string | null;
+}
+
 // ── Taluka / Village ──────────────────────────────────────────────────────────
 
 export interface Taluka {
@@ -42,6 +47,26 @@ export interface Village {
   taluka_id: string | null;
   name: string;
   description: string | null;
+  created_at: string;
+}
+
+export interface TalukaVillageRow {
+  id: string;
+  village_name: string;
+  taluka_id: string | null;
+  taluka_name: string | null;
+}
+
+// ── App user detail (public.users — for listing) ───────────────────────────────
+
+export interface AppUserDetail {
+  id: string;
+  username: string;
+  email: string;
+  full_name: string | null;
+  role: string;
+  is_active: boolean;
+  last_login: string | null;
   created_at: string;
 }
 
