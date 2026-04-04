@@ -735,11 +735,11 @@ const TalukaVillageContent = () => {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
 
-  async function uploadMedia(file: File): Promise<string | null> {
+  async function uploadMedia(file: File): Promise<string> {
     const ext = file.name.split('.').pop();
     const path = `whatsapp/${Date.now()}.${ext}`;
     const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true });
-    if (error) return null;
+    if (error) throw new Error(`Media upload failed: ${error.message}`);
     const { data } = supabase.storage.from('media').getPublicUrl(path);
     return data.publicUrl;
   }
@@ -763,19 +763,25 @@ const TalukaVillageContent = () => {
     setSendError(null);
 
     try {
-      // Upload media once if attached
+      // Upload media once if attached — throws on failure so user sees the error
       let mediaUrl: string | null = null;
       if (mediaFile) {
         mediaUrl = await uploadMedia(mediaFile);
       }
+
 
       const guestsToSend = guests.filter(g => selectedGuests.includes(g.id));
       const errors: string[] = [];
 
       for (const guest of guestsToSend) {
         const phone = guest.whatsapp_number || guest.mobile;
-        const message = substituteFields(messageText, guest);
-        const body: Record<string, string> = { phone, message };
+        // Build the full message exactly as shown in the preview:
+        // template name (bold) on top, then the personalised body
+        const body_text = substituteFields(messageText, guest);
+        const fullMessage = templateName.trim()
+          ? `*${templateName.trim().toUpperCase()}*\n\n${body_text}`
+          : body_text;
+        const body: Record<string, string> = { phone, message: fullMessage };
         if (mediaUrl) body.media_url = mediaUrl;
 
         const { error } = await supabase.functions.invoke('send-whatsapp', { body });
