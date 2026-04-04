@@ -4,6 +4,7 @@
  */
 
 import { useState, FormEvent } from "react";
+import { supabase } from './lib/supabase';
 import { useAuth } from './hooks/useAuth';
 import { useGuests } from './hooks/useGuests';
 import { useUsers } from './hooks/useUsers';
@@ -731,6 +732,73 @@ const TalukaVillageContent = () => {
   const [selectedField, setSelectedField] = useState("");
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+
+  async function uploadMedia(file: File): Promise<string | null> {
+    const ext = file.name.split('.').pop();
+    const path = `whatsapp/${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true });
+    if (error) return null;
+    const { data } = supabase.storage.from('media').getPublicUrl(path);
+    return data.publicUrl;
+  }
+
+  function substituteFields(text: string, guest: typeof guests[0]): string {
+    return text
+      .replace(/\{addressable-name\}/g, guest.addressable_name)
+      .replace(/\{given-name\}/g, guest.given_name ?? '')
+      .replace(/\{rsvp-link\}/g, '[RSVP Link]')
+      .replace(/\{arrival-details\}/g, '[Arrival Details]')
+      .replace(/\{departure-details\}/g, '[Departure Details]')
+      .replace(/\{hotel-details\}/g, '[Hotel Details]');
+  }
+
+  async function handleSend() {
+    if (!messageText.trim()) {
+      setSendError('Please enter a message before sending.');
+      return;
+    }
+    setSending(true);
+    setSendError(null);
+
+    try {
+      // Upload media once if attached
+      let mediaUrl: string | null = null;
+      if (mediaFile) {
+        mediaUrl = await uploadMedia(mediaFile);
+      }
+
+      const guestsToSend = guests.filter(g => selectedGuests.includes(g.id));
+      const errors: string[] = [];
+
+      for (const guest of guestsToSend) {
+        const phone = guest.whatsapp_number || guest.mobile;
+        const message = substituteFields(messageText, guest);
+        const body: Record<string, string> = { phone, message };
+        if (mediaUrl) body.media_url = mediaUrl;
+
+        const { error } = await supabase.functions.invoke('send-whatsapp', { body });
+        if (error) errors.push(`${guest.addressable_name}: ${error.message}`);
+      }
+
+      if (errors.length > 0 && errors.length === guestsToSend.length) {
+        setSendError(`All messages failed:\n${errors.join('\n')}`);
+      } else {
+        setShowCreateModal(false);
+        setShowSuccessModal(true);
+        setSelectedGuests([]);
+        setTemplateName('');
+        setMessageText('');
+        setMediaFile(null);
+        setMediaPreview(null);
+      }
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : 'Unexpected error');
+    } finally {
+      setSending(false);
+    }
+  }
 
   const filteredGuests = guests.filter(guest =>
     (guest.addressable_name + " " + (guest.given_name ?? "")).toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -987,16 +1055,25 @@ const TalukaVillageContent = () => {
                     </div>
                   </div>
 
+                  {sendError && (
+                    <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 whitespace-pre-line">
+                      {sendError}
+                    </div>
+                  )}
+
                   <div className="flex justify-center pt-4">
-                    <button 
-                      onClick={() => {
-                        setShowCreateModal(false);
-                        setShowSuccessModal(true);
-                        setSelectedGuests([]);
-                      }}
-                      className="px-12 py-3 bg-[#1B1A16] text-white rounded-lg font-bold hover:bg-[#2d2c26] transition-all shadow-lg uppercase tracking-wider"
+                    <button
+                      onClick={handleSend}
+                      disabled={sending || !messageText.trim()}
+                      className={`px-12 py-3 rounded-lg font-bold transition-all shadow-lg uppercase tracking-wider ${
+                        sending || !messageText.trim()
+                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          : 'bg-[#1B1A16] text-white hover:bg-[#2d2c26]'
+                      }`}
                     >
-                      Send Message
+                      {sending
+                        ? `Sending to ${selectedGuests.length} guest${selectedGuests.length !== 1 ? 's' : ''}…`
+                        : `Send to ${selectedGuests.length} Guest${selectedGuests.length !== 1 ? 's' : ''}`}
                     </button>
                   </div>
                 </div>
