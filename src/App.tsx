@@ -781,11 +781,17 @@ const TalukaVillageContent = () => {
         const fullMessage = templateName.trim()
           ? `*${templateName.trim().toUpperCase()}*\n\n${body_text}`
           : body_text;
-        const body: Record<string, string> = { phone, message: fullMessage };
-        if (mediaUrl) body.media_url = mediaUrl;
+        const payload: Record<string, string> = { phone, message: fullMessage };
+        if (mediaUrl) payload.media_url = mediaUrl;
 
-        const { error } = await supabase.functions.invoke('send-whatsapp', { body });
-        if (error) errors.push(`${guest.addressable_name}: ${error.message}`);
+        const { data: result, error: fnError } = await supabase.functions.invoke('send-whatsapp', { body: payload });
+        if (fnError) {
+          errors.push(`${guest.addressable_name}: ${fnError.message}`);
+        } else if (result && !result.ok) {
+          // Surface the actual WhatsApp API error
+          const apiMsg = result.data?.message || result.data?.error || result.data?.raw || JSON.stringify(result.data);
+          errors.push(`${guest.addressable_name}: API error — ${apiMsg}`);
+        }
       }
 
       if (errors.length > 0 && errors.length === guestsToSend.length) {
