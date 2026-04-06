@@ -782,7 +782,10 @@ const TalukaVillageContent = () => {
           ? `*${templateName.trim().toUpperCase()}*\n\n${body_text}`
           : body_text;
         const payload: Record<string, string> = { phone, message: fullMessage };
-        if (mediaUrl) payload.media_url = mediaUrl;
+        if (mediaUrl) {
+          payload.media_url  = mediaUrl;
+          payload.media_type = mediaFile!.type;  // e.g. "image/jpeg", "video/mp4"
+        }
 
         const { data: result, error: fnError } = await supabase.functions.invoke('send-whatsapp', { body: payload });
         if (fnError) {
