@@ -98,7 +98,7 @@ const Sidebar = ({ activePage, setActivePage, onLogout }: {
     { id: "users", label: "Users", icon: Settings },
   ];
 
-  console.log('llll');
+  // console.log('llll');
   
 
   return (
