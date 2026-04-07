@@ -766,38 +766,68 @@ const TalukaVillageContent = () => {
     setSendError(null);
 
     try {
-      // Upload media once if attached — throws on failure so user sees the error
-      let mediaUrl: string | null = null;
-      if (mediaFile) {
-        mediaUrl = await uploadMedia(mediaFile);
-      }
+      const currentUser = JSON.parse(localStorage.getItem('enough_goa_user') || 'null');
+      const userId: string | null = currentUser?.id ?? null;
 
+      // Upload media once if attached
+      let mediaUrl: string | null = null;
+      if (mediaFile) mediaUrl = await uploadMedia(mediaFile);
 
       const guestsToSend = guests.filter(g => selectedGuests.includes(g.id));
+      const batchName = templateName.trim() || 'Untitled';
+
+      // 1. Log template
+      const { data: tmpl } = await supabase
+        .from('message_templates')
+        .insert({ name: batchName, content: messageText, media_url: mediaUrl, media_type: mediaFile?.type ?? null, created_by: userId })
+        .select('id').single();
+
+      // 2. Create batch
+      const { data: batch } = await supabase
+        .from('message_batches')
+        .insert({ template_id: tmpl?.id ?? null, batch_name: batchName, total_recipients: guestsToSend.length, status: 'processing', sent_by: userId })
+        .select('id').single();
+
+      // 3. Send each guest and log recipient row
       const errors: string[] = [];
+      let sentCount = 0, failedCount = 0;
 
       for (const guest of guestsToSend) {
         const phone = guest.whatsapp_number || guest.mobile;
-        // Build the full message exactly as shown in the preview:
-        // template name (bold) on top, then the personalised body
         const body_text = substituteFields(messageText, guest);
         const fullMessage = templateName.trim()
           ? `*${templateName.trim().toUpperCase()}*\n\n${body_text}`
           : body_text;
         const payload: Record<string, string> = { phone, message: fullMessage };
-        if (mediaUrl) {
-          payload.media_url  = mediaUrl;
-          payload.media_type = mediaFile!.type;  // e.g. "image/jpeg", "video/mp4"
-        }
+        if (mediaUrl) { payload.media_url = mediaUrl; payload.media_type = mediaFile!.type; }
 
         const { data: result, error: fnError } = await supabase.functions.invoke('send-whatsapp', { body: payload });
-        if (fnError) {
-          errors.push(`${guest.addressable_name}: ${fnError.message}`);
-        } else if (result && !result.ok) {
-          // Surface the actual WhatsApp API error
-          const apiMsg = result.data?.message || result.data?.error || result.data?.raw || JSON.stringify(result.data);
-          errors.push(`${guest.addressable_name}: API error — ${apiMsg}`);
-        }
+        const success = !fnError && result?.ok;
+        const errMsg = fnError?.message ?? (!result?.ok ? (result?.data?.message || result?.data?.raw || 'API error') : null);
+
+        if (success) sentCount++; else { failedCount++; errors.push(`${guest.addressable_name}: ${errMsg}`); }
+
+        await supabase.from('message_recipients').insert({
+          batch_id: batch?.id ?? null,
+          guest_id: guest.id,
+          addressable_name: guest.addressable_name,
+          given_name: guest.given_name ?? null,
+          whatsapp_number: phone,
+          message_content: fullMessage,
+          media_url: mediaUrl,
+          status: success ? 'sent' : 'failed',
+          error_message: errMsg ?? null,
+          sent_at: success ? new Date().toISOString() : null,
+        });
+      }
+
+      // 4. Update batch with final counts
+      if (batch?.id) {
+        await supabase.from('message_batches').update({
+          sent_count: sentCount,
+          failed_count: failedCount,
+          status: failedCount === guestsToSend.length ? 'failed' : sentCount === guestsToSend.length ? 'completed' : 'partially_completed',
+        }).eq('id', batch.id);
       }
 
       if (errors.length > 0 && errors.length === guestsToSend.length) {
@@ -1188,7 +1218,7 @@ const TalukaVillageContent = () => {
 
 const CommunicationHubContent = () => {
   const { guests } = useGuests();
-  const { batches: messageBatches, loading: batchesLoading } = useMessages();
+  const { batches: messageBatches, loading: batchesLoading, refetch: refetchBatches } = useMessages();
   const [showQR, setShowQR] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -1197,6 +1227,8 @@ const CommunicationHubContent = () => {
   const [selectedTaluka, setSelectedTaluka] = useState("All");
   const [selectedVillage, setSelectedVillage] = useState("All");
   const [viewingMessage, setViewingMessage] = useState<any | null>(null);
+  const [hubSending, setHubSending] = useState(false);
+  const [hubSendError, setHubSendError] = useState<string | null>(null);
 
   // Template Form State
   const [templateName, setTemplateName] = useState("");
@@ -1204,6 +1236,113 @@ const CommunicationHubContent = () => {
   const [selectedField, setSelectedField] = useState("");
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
+
+  async function uploadHubMedia(file: File): Promise<string> {
+    const ext = file.name.split('.').pop();
+    const path = `whatsapp/${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true });
+    if (error) throw new Error(`Media upload failed: ${error.message}`);
+    const { data } = supabase.storage.from('media').getPublicUrl(path);
+    return data.publicUrl;
+  }
+
+  function substituteHubFields(text: string, guest: typeof guests[0]): string {
+    return text
+      .replace(/\{addressable-name\}/g, guest.addressable_name)
+      .replace(/\{given-name\}/g, guest.given_name ?? '')
+      .replace(/\{rsvp-link\}/g, '[RSVP Link]')
+      .replace(/\{arrival-details\}/g, '[Arrival Details]')
+      .replace(/\{departure-details\}/g, '[Departure Details]')
+      .replace(/\{hotel-details\}/g, '[Hotel Details]');
+  }
+
+  async function handleHubSend() {
+    if (!messageText.trim()) { setHubSendError('Please enter a message.'); return; }
+    setHubSending(true);
+    setHubSendError(null);
+    try {
+      const currentUser = JSON.parse(localStorage.getItem('enough_goa_user') || 'null');
+      const userId: string | null = currentUser?.id ?? null;
+
+      let mediaUrl: string | null = null;
+      if (mediaFile) mediaUrl = await uploadHubMedia(mediaFile);
+
+      const recipientGuests = guests.filter(g => selectedRecipients.includes(g.id));
+      const batchName = templateName.trim() || 'Untitled';
+
+      // 1. Log template
+      const { data: tmpl } = await supabase
+        .from('message_templates')
+        .insert({ name: batchName, content: messageText, media_url: mediaUrl, media_type: mediaFile?.type ?? null, created_by: userId })
+        .select('id').single();
+
+      // 2. Create batch
+      const { data: batch } = await supabase
+        .from('message_batches')
+        .insert({ template_id: tmpl?.id ?? null, batch_name: batchName, total_recipients: recipientGuests.length, status: 'processing', sent_by: userId })
+        .select('id').single();
+
+      // 3. Send each recipient and log
+      const errors: string[] = [];
+      let sentCount = 0, failedCount = 0;
+
+      for (const guest of recipientGuests) {
+        const phone = guest.whatsapp_number || guest.mobile;
+        const body_text = substituteHubFields(messageText, guest);
+        const fullMessage = templateName.trim()
+          ? `*${templateName.trim().toUpperCase()}*\n\n${body_text}`
+          : body_text;
+        const payload: Record<string, string> = { phone, message: fullMessage };
+        if (mediaUrl) { payload.media_url = mediaUrl; payload.media_type = mediaFile!.type; }
+
+        const { data: result, error: fnError } = await supabase.functions.invoke('send-whatsapp', { body: payload });
+        const success = !fnError && result?.ok;
+        const errMsg = fnError?.message ?? (!result?.ok ? (result?.data?.message || result?.data?.raw || 'API error') : null);
+
+        if (success) sentCount++; else { failedCount++; errors.push(`${guest.addressable_name}: ${errMsg}`); }
+
+        await supabase.from('message_recipients').insert({
+          batch_id: batch?.id ?? null,
+          guest_id: guest.id,
+          addressable_name: guest.addressable_name,
+          given_name: guest.given_name ?? null,
+          whatsapp_number: phone,
+          message_content: fullMessage,
+          media_url: mediaUrl,
+          status: success ? 'sent' : 'failed',
+          error_message: errMsg ?? null,
+          sent_at: success ? new Date().toISOString() : null,
+        });
+      }
+
+      // 4. Update batch counts
+      if (batch?.id) {
+        await supabase.from('message_batches').update({
+          sent_count: sentCount,
+          failed_count: failedCount,
+          status: failedCount === recipientGuests.length ? 'failed' : sentCount === recipientGuests.length ? 'completed' : 'partially_completed',
+        }).eq('id', batch.id);
+      }
+
+      if (errors.length > 0 && errors.length === recipientGuests.length) {
+        setHubSendError(`All messages failed:\n${errors.join('\n')}`);
+      } else {
+        setShowCreateModal(false);
+        setShowSuccessModal(true);
+        setStep(1);
+        setSelectedRecipients([]);
+        setTemplateName('');
+        setMessageText('');
+        setMediaFile(null);
+        setMediaPreview(null);
+        await refetchBatches();
+      }
+    } catch (err) {
+      setHubSendError(err instanceof Error ? err.message : 'Unexpected error');
+    } finally {
+      setHubSending(false);
+    }
+  }
 
   const [connectedInstance] = useState({ name: "Portal", mobile: "" });
 
@@ -1561,28 +1700,30 @@ const CommunicationHubContent = () => {
                         </div>
                       </div>
 
+                      {hubSendError && (
+                        <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 whitespace-pre-line">
+                          {hubSendError}
+                        </div>
+                      )}
                       <div className="flex items-center justify-center space-x-4 pt-4">
-                        <button 
+                        <button
                           onClick={() => setStep(1)}
                           className="px-8 py-3 border-2 border-[#1B1A16] text-[#1B1A16] rounded-lg font-bold hover:bg-gray-50 transition-all uppercase tracking-wider"
                         >
                           Back
                         </button>
-                        <button 
-                          onClick={() => {
-                            setShowCreateModal(false);
-                            setShowSuccessModal(true);
-                            setStep(1);
-                            setSelectedRecipients([]);
-                          }}
-                          disabled={selectedRecipients.length === 0}
+                        <button
+                          onClick={handleHubSend}
+                          disabled={selectedRecipients.length === 0 || hubSending || !messageText.trim()}
                           className={`px-12 py-3 rounded-lg font-bold transition-all shadow-lg uppercase tracking-wider ${
-                            selectedRecipients.length > 0 
-                              ? 'bg-[#1B1A16] text-white hover:bg-[#2d2c26]' 
+                            selectedRecipients.length > 0 && !hubSending && messageText.trim()
+                              ? 'bg-[#1B1A16] text-white hover:bg-[#2d2c26]'
                               : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                           }`}
                         >
-                          Send
+                          {hubSending
+                            ? `Sending to ${selectedRecipients.length}…`
+                            : `Send to ${selectedRecipients.length} Guest${selectedRecipients.length !== 1 ? 's' : ''}`}
                         </button>
                       </div>
                     </motion.div>
@@ -1731,9 +1872,9 @@ const CommunicationHubContent = () => {
                       className="px-6 py-4 text-sm font-bold text-gray-900 cursor-pointer hover:text-[#1B1A16] hover:underline"
                       onClick={() => setViewingMessage(batch)}
                     >
-                      {batch.batch_name ?? batch.id.slice(0, 8)}
+                      {(batch as any).template_name ?? batch.batch_name ?? batch.id.slice(0, 8)}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 border-l border-gray-200">{batch.sent_by ?? '—'}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600 border-l border-gray-200">{batch.total_recipients}</td>
                     <td className="px-6 py-4 text-sm text-gray-600 border-l border-gray-200">{d.toLocaleDateString('en-IN')}</td>
                     <td className="px-6 py-4 text-sm text-gray-600 border-l border-gray-200">{d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</td>
                     <td className="px-6 py-4 text-sm text-gray-900 border-l border-gray-200 text-center font-medium">{batch.sent_count}</td>
