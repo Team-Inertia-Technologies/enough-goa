@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, FormEvent } from "react";
+import { useState, useEffect, FormEvent } from "react";
 import { supabase } from './lib/supabase';
 import { useAuth } from './hooks/useAuth';
 import { useGuests } from './hooks/useGuests';
@@ -236,92 +236,84 @@ const Header = ({ user }: { user: any }) => {
 };
 
 const MessageBatchView = ({ message, onBack }: { message: any; onBack: () => void }) => {
-  const [activeTab, setActiveTab] = useState("All");
-  const [selectedRecipients, setSelectedRecipients] = useState<number[]>([]);
-  
-  const batchRecipients = [
-    { id: 1, addressableName: "Laxman", givenName: "Kubal", whatsapp: "917350807077", status: "Sent", delivered: "20/07/2024 10:30 AM" },
-    { id: 2, addressableName: "Rahul", givenName: "Sharma", whatsapp: "919876543210", status: "Delivered", delivered: "20/07/2024 11:15 AM" },
-    { id: 3, addressableName: "Priya", givenName: "Patel", whatsapp: "918765432109", status: "Failed", delivered: "-NA-" },
-    { id: 4, addressableName: "Sneha", givenName: "Desai", whatsapp: "917654321098", status: "Not Sent", delivered: "-NA-" },
-    { id: 5, addressableName: "Vikram", givenName: "Singh", whatsapp: "916543210987", status: "Deleted", delivered: "-NA-" },
-    { id: 6, addressableName: "Anjali", givenName: "Nair", whatsapp: "915432109876", status: "Sent", delivered: "20/07/2024 02:00 PM" },
+  const [activeTab, setActiveTab]     = useState("All");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [recipients, setRecipients]   = useState<any[]>([]);
+  const [template, setTemplate]       = useState<any | null>(null);
+  const [loading, setLoading]         = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      const [recRes, tmplRes] = await Promise.all([
+        supabase
+          .from('message_recipients')
+          .select('*')
+          .eq('batch_id', message.id)
+          .order('created_at', { ascending: true }),
+        message.template_id
+          ? supabase.from('message_templates').select('*').eq('id', message.template_id).single()
+          : Promise.resolve({ data: null }),
+      ]);
+      setRecipients(recRes.data ?? []);
+      setTemplate((tmplRes as any).data ?? null);
+      setLoading(false);
+    }
+    load();
+  }, [message.id, message.template_id]);
+
+  const statusLabel: Record<string, string> = {
+    sent: 'Sent', failed: 'Failed', not_sent: 'Not Sent', partially_completed: 'Partial',
+  };
+  const statusStyle: Record<string, string> = {
+    sent:     'bg-green-50 text-green-600',
+    failed:   'bg-red-50 text-red-600',
+    not_sent: 'bg-gray-100 text-gray-600',
+  };
+
+  const tabDefs = [
+    { key: 'All',      label: 'All' },
+    { key: 'sent',     label: 'Sent' },
+    { key: 'failed',   label: 'Failed' },
+    { key: 'not_sent', label: 'Not Sent' },
   ];
 
-  const getStatusCount = (status: string) => {
-    if (status === "All") return batchRecipients.length;
-    return batchRecipients.filter(r => r.status === status).length;
-  };
+  const filteredRecipients = activeTab === 'All'
+    ? recipients
+    : recipients.filter(r => r.status === activeTab);
 
-  const tabs = [
-    { label: "Not Sent", count: getStatusCount("Not Sent"), color: "bg-gray-100 text-gray-600" },
-    { label: "Sent", count: getStatusCount("Sent"), color: "bg-green-50 text-green-600" },
-    { label: "Delivered", count: getStatusCount("Delivered"), color: "bg-blue-50 text-blue-600" },
-    { label: "Failed", count: getStatusCount("Failed"), color: "bg-red-50 text-red-600" },
-    { label: "Deleted", count: getStatusCount("Deleted"), color: "bg-red-50 text-red-600" },
-    { label: "All", count: getStatusCount("All"), color: "bg-gray-800 text-white" },
-  ];
-
-  const filteredRecipients = activeTab === "All" 
-    ? batchRecipients 
-    : batchRecipients.filter(r => r.status === activeTab);
-
-  const handleSelectAll = () => {
-    if (selectedRecipients.length === filteredRecipients.length) {
-      setSelectedRecipients([]);
-    } else {
-      setSelectedRecipients(filteredRecipients.map(r => r.id));
-    }
-  };
-
-  const toggleRecipient = (id: number) => {
-    setSelectedRecipients(prev => 
-      prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]
-    );
-  };
-
-  const getStatusStyle = (status: string) => {
-    switch (status) {
-      case "Sent": return "bg-green-50 text-green-600";
-      case "Delivered": return "bg-blue-50 text-blue-600";
-      case "Failed": return "bg-red-50 text-red-600";
-      case "Not Sent": return "bg-gray-100 text-gray-600";
-      case "Deleted": return "bg-orange-50 text-orange-600";
-      default: return "bg-gray-50 text-gray-500";
-    }
-  };
+  const batchName   = message.template_name ?? message.batch_name ?? 'Untitled';
+  const sentDate    = message.created_at ? new Date(message.created_at) : null;
+  const previewText = template?.content ?? '—';
 
   return (
     <div className="p-8 space-y-6">
-      {/* Back Button */}
-      <button 
-        onClick={onBack}
-        className="flex items-center text-sm font-bold text-gray-600 hover:text-gray-900 transition-colors"
-      >
-        <ChevronLeft size={18} className="mr-1" />
-        Back
+      {/* Back */}
+      <button onClick={onBack} className="flex items-center text-sm font-bold text-gray-600 hover:text-gray-900 transition-colors">
+        <ChevronLeft size={18} className="mr-1" /> Back
       </button>
 
-      {/* Header Section */}
+      {/* Header */}
       <div className="flex justify-between items-center bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
         <div className="space-y-1">
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">From</p>
-          <h2 className="text-2xl font-bold text-[#1B1A16]">{message.sender} (919049019382)</h2>
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Batch</p>
+          <h2 className="text-2xl font-bold text-[#1B1A16]">{batchName}</h2>
+          <div className="flex items-center space-x-4 text-xs text-gray-500 mt-1">
+            <span>Total: <strong>{message.total_recipients}</strong></span>
+            <span>Sent: <strong className="text-green-600">{message.sent_count}</strong></span>
+            <span>Failed: <strong className="text-red-600">{message.failed_count}</strong></span>
+            {sentDate && <span>Date: <strong>{sentDate.toLocaleDateString('en-IN')}</strong></span>}
+          </div>
         </div>
-        <div className="flex items-center space-x-3">
-          <button className="flex items-center space-x-2 px-4 py-2 bg-white border border-red-200 text-red-600 rounded-lg text-sm font-bold hover:bg-red-50 transition-colors">
-            <Trash2 size={16} />
-            <span>Delete Batch</span>
-          </button>
-          <button className="flex items-center space-x-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm font-bold hover:bg-gray-50 transition-colors">
-            <RefreshCw size={16} />
-            <span>Update Status</span>
-          </button>
-        </div>
+        <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${
+          message.status === 'completed' ? 'bg-green-100 text-green-700' :
+          message.status === 'failed'    ? 'bg-red-100 text-red-700' :
+          'bg-yellow-100 text-yellow-700'
+        }`}>{message.status}</span>
       </div>
 
       <div className="flex flex-col lg:flex-row gap-8">
-        {/* Left: Phone Preview */}
+        {/* Phone Preview */}
         <div className="w-full lg:w-[350px] flex-shrink-0">
           <div className="bg-[#1B1A16] rounded-[40px] p-3 shadow-2xl relative border-[6px] border-[#7C5275] h-[600px]">
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-7 bg-[#1B1A16] rounded-b-2xl z-20 flex items-center justify-center">
@@ -334,26 +326,32 @@ const MessageBatchView = ({ message, onBack }: { message: any; onBack: () => voi
                     <Users size={20} className="text-gray-600" />
                   </div>
                   <div>
-                    <p className="text-sm font-bold">{message.sender}</p>
-                    <p className="text-[10px] opacity-80">919049019382</p>
+                    <p className="text-sm font-bold">Portal</p>
+                    <p className="text-[10px] opacity-80">WhatsApp</p>
                   </div>
                 </div>
-                <div className="flex items-center space-x-4">
-                  <Video size={18} />
-                  <Phone size={18} />
-                </div>
+                <div className="flex items-center space-x-4"><Video size={18} /><Phone size={18} /></div>
               </div>
-              <div className="flex-1 p-4 space-y-4 relative">
-                <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ backgroundImage: 'url("https://picsum.photos/seed/whatsapp/400/800")' }}></div>
-                <div className="bg-gray-400/30 text-center py-1 rounded text-[10px] font-medium text-gray-600 relative z-10">20/07/2024</div>
-                <div className="max-w-[85%] bg-white rounded-lg rounded-tl-none p-3 shadow-sm relative z-10">
-                  <div className="text-xs text-gray-800 leading-relaxed">
-                    Dear Laxman Kubal,<br/><br/>
-                    My beloved Friend is finally getting married. We would love that you could grace us with your presence and blessings at the festivities. Click <span className="text-blue-500 underline cursor-pointer break-all">https://staging8.teaminertia.com/eventflow/microsite.php?source=46cb518f2478f732b91b2fd90e6ab09a&target=6f2f8c727059345512332c8903ef406e</span> to RSVP.<br/><br/>
-                    Thank you.
+              <div className="flex-1 p-4 space-y-4 relative overflow-y-auto">
+                {sentDate && (
+                  <div className="bg-gray-400/30 text-center py-1 rounded text-[10px] font-medium text-gray-600 relative z-10">
+                    {sentDate.toLocaleDateString('en-IN')}
                   </div>
-                  <div className="flex justify-end items-center space-x-1 mt-1">
-                    <span className="text-[9px] text-gray-400">12:00 am</span>
+                )}
+                <div className="max-w-[85%] bg-white rounded-lg rounded-tl-none p-3 shadow-sm relative z-10">
+                  {template?.media_url && (
+                    <div className="mb-2 rounded overflow-hidden">
+                      <img src={template.media_url} alt="media" className="w-full h-auto max-h-[150px] object-cover" />
+                    </div>
+                  )}
+                  <div className="text-xs text-gray-800 leading-relaxed whitespace-pre-wrap break-words">
+                    {batchName && <p className="font-bold mb-1 uppercase">{batchName}</p>}
+                    {previewText}
+                  </div>
+                  <div className="flex justify-end mt-1">
+                    <span className="text-[9px] text-gray-400">
+                      {sentDate ? sentDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : ''}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -361,42 +359,37 @@ const MessageBatchView = ({ message, onBack }: { message: any; onBack: () => voi
           </div>
         </div>
 
-        {/* Right: Status & Table */}
+        {/* Right: Tabs + Table */}
         <div className="flex-1 space-y-6">
           {/* Status Tabs */}
           <div className="flex flex-wrap gap-2">
-            {tabs.map((tab) => (
+            {tabDefs.map(tab => (
               <button
-                key={tab.label}
-                onClick={() => {
-                  setActiveTab(tab.label);
-                  setSelectedRecipients([]);
-                }}
+                key={tab.key}
+                onClick={() => { setActiveTab(tab.key); setSelectedIds([]); }}
                 className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                  activeTab === tab.label 
-                    ? 'bg-[#1B1A16] text-white shadow-md' 
+                  activeTab === tab.key
+                    ? 'bg-[#1B1A16] text-white shadow-md'
                     : 'bg-white text-gray-500 border border-gray-200 hover:border-gray-300'
                 }`}
               >
-                {tab.label}: {tab.count}
+                {tab.label}: {tab.key === 'All' ? recipients.length : recipients.filter(r => r.status === tab.key).length}
               </button>
             ))}
           </div>
 
           {/* Info Banner */}
           <div className="bg-white p-4 rounded-xl border border-gray-200 space-y-2">
-            <div className="flex items-start space-x-2 text-[11px] text-gray-500">
-              <div className="w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center flex-shrink-0 text-[10px] mt-0.5">i</div>
-              <span>Delivery is subject to the recipient being in a network/WiFi coverage area.</span>
-            </div>
-            <div className="flex items-start space-x-2 text-[11px] text-gray-500">
-              <div className="w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center flex-shrink-0 text-[10px] mt-0.5">i</div>
-              <span>Select "Delete Batch" if you wish to discontinue the process for the messages "NOT SENT".</span>
-            </div>
-            <div className="flex items-start space-x-2 text-[11px] text-gray-500">
-              <div className="w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center flex-shrink-0 text-[10px] mt-0.5">i</div>
-              <span>Messages will be marked as "Failed" if the recipient's WhatsApp number is wrong.</span>
-            </div>
+            {[
+              'Delivery is subject to the recipient being in a network/WiFi coverage area.',
+              'Messages will be marked as "Failed" if the recipient\'s WhatsApp number is wrong.',
+              'Sent time reflects when the message was dispatched from the portal.',
+            ].map((tip, i) => (
+              <div key={i} className="flex items-start space-x-2 text-[11px] text-gray-500">
+                <div className="w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center flex-shrink-0 text-[10px] mt-0.5">i</div>
+                <span>{tip}</span>
+              </div>
+            ))}
           </div>
 
           {/* Recipient Table */}
@@ -405,11 +398,9 @@ const MessageBatchView = ({ message, onBack }: { message: any; onBack: () => voi
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
                   <th className="px-4 py-3 w-10">
-                    <input 
-                      type="checkbox" 
-                      className="rounded border-gray-300 cursor-pointer"
-                      checked={filteredRecipients.length > 0 && selectedRecipients.length === filteredRecipients.length}
-                      onChange={handleSelectAll}
+                    <input type="checkbox" className="rounded border-gray-300 cursor-pointer"
+                      checked={filteredRecipients.length > 0 && selectedIds.length === filteredRecipients.length}
+                      onChange={() => setSelectedIds(selectedIds.length === filteredRecipients.length ? [] : filteredRecipients.map(r => r.id))}
                     />
                   </th>
                   <th className="px-4 py-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider">#</th>
@@ -417,38 +408,37 @@ const MessageBatchView = ({ message, onBack }: { message: any; onBack: () => voi
                   <th className="px-4 py-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider border-l border-gray-200 text-center">Given Name</th>
                   <th className="px-4 py-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider border-l border-gray-200 text-center">WhatsApp Number</th>
                   <th className="px-4 py-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider border-l border-gray-200 text-center">Status</th>
-                  <th className="px-4 py-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider border-l border-gray-200 text-center">Delivered</th>
+                  <th className="px-4 py-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider border-l border-gray-200 text-center">Sent At</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {filteredRecipients.map((rec, index) => (
-                  <tr key={rec.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3">
-                      <input 
-                        type="checkbox" 
-                        className="rounded border-gray-300 cursor-pointer"
-                        checked={selectedRecipients.includes(rec.id)}
-                        onChange={() => toggleRecipient(rec.id)}
-                      />
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{index + 1}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600 border-l border-gray-200 text-center">{rec.addressableName}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600 border-l border-gray-200 text-center">{rec.givenName}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600 border-l border-gray-200 text-center">{rec.whatsapp}</td>
-                    <td className="px-4 py-3 border-l border-gray-200 text-center">
-                      <span className={`px-2 py-1 text-[10px] font-bold rounded uppercase ${getStatusStyle(rec.status)}`}>
-                        {rec.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600 border-l border-gray-200 text-center">{rec.delivered}</td>
-                  </tr>
-                ))}
-                {filteredRecipients.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-gray-500 italic">
-                      No recipients found with status "{activeTab}"
-                    </td>
-                  </tr>
+                {loading ? (
+                  <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400 italic">Loading…</td></tr>
+                ) : filteredRecipients.length === 0 ? (
+                  <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-500 italic">No recipients for "{activeTab}"</td></tr>
+                ) : (
+                  filteredRecipients.map((rec, idx) => (
+                    <tr key={rec.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3">
+                        <input type="checkbox" className="rounded border-gray-300 cursor-pointer"
+                          checked={selectedIds.includes(rec.id)}
+                          onChange={() => setSelectedIds(prev => prev.includes(rec.id) ? prev.filter(x => x !== rec.id) : [...prev, rec.id])}
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{idx + 1}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 border-l border-gray-200 text-center">{rec.addressable_name}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 border-l border-gray-200 text-center">{rec.given_name ?? '—'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 border-l border-gray-200 text-center">{rec.whatsapp_number}</td>
+                      <td className="px-4 py-3 border-l border-gray-200 text-center">
+                        <span className={`px-2 py-1 text-[10px] font-bold rounded uppercase ${statusStyle[rec.status] ?? 'bg-gray-50 text-gray-500'}`}>
+                          {statusLabel[rec.status] ?? rec.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600 border-l border-gray-200 text-center">
+                        {rec.sent_at ? new Date(rec.sent_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—'}
+                      </td>
+                    </tr>
+                  ))
                 )}
               </tbody>
             </table>
