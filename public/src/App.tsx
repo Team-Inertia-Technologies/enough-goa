@@ -98,6 +98,9 @@ const Sidebar = ({ activePage, setActivePage, onLogout }: {
     { id: "users", label: "Users", icon: Settings },
   ];
 
+  console.log('llll');
+  
+
   return (
     <motion.div
       onMouseEnter={() => setIsHovered(true)}
