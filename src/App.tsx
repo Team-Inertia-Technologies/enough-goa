@@ -3,9 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, FormEvent } from "react";
+import { useState, useEffect, FormEvent } from "react";
+import { supabase } from './lib/supabase';
 import { useAuth } from './hooks/useAuth';
 import { useGuests } from './hooks/useGuests';
+import { useUsers } from './hooks/useUsers';
+import { useTalukas } from './hooks/useTalukas';
 import { useDashboard } from './hooks/useDashboard';
 import { useMessages } from './hooks/useMessages';
 import {
@@ -59,7 +62,7 @@ import {
 } from "recharts";
 
 // --- Types ---
-type Page = "dashboard" | "taluka" | "communication" | "users";
+type Page = "dashboard" | "taluka" | "communication" | "users" | "guests";
 
 // --- Mock Data ---
 const rsvpData = [
@@ -89,10 +92,14 @@ const Sidebar = ({ activePage, setActivePage, onLogout }: {
   const [isHovered, setIsHovered] = useState(false);
   const menuItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "guests", label: "Guests", icon: Users },
     { id: "taluka", label: "Taluka/Village", icon: MapPin },
     { id: "communication", label: "Communication Hub", icon: MessageSquare },
-    { id: "users", label: "Users", icon: Users },
+    { id: "users", label: "Users", icon: Settings },
   ];
+
+  // console.log('llll');
+  
 
   return (
     <motion.div
@@ -207,7 +214,6 @@ const Header = ({ user }: { user: any }) => {
   const displayName = user?.full_name || user?.username || "User";
   const initials = displayName.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 2);
   const roleLabel = user?.role === "admin" ? "Administrator" : user?.role === "moderator" ? "Moderator" : "User";
-
   return (
     <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-end px-8 sticky top-0 z-10">
       <div className="flex items-center space-x-6">
@@ -230,92 +236,84 @@ const Header = ({ user }: { user: any }) => {
 };
 
 const MessageBatchView = ({ message, onBack }: { message: any; onBack: () => void }) => {
-  const [activeTab, setActiveTab] = useState("All");
-  const [selectedRecipients, setSelectedRecipients] = useState<number[]>([]);
-  
-  const batchRecipients = [
-    { id: 1, addressableName: "Laxman", givenName: "Kubal", whatsapp: "917350807077", status: "Sent", delivered: "20/07/2024 10:30 AM" },
-    { id: 2, addressableName: "Rahul", givenName: "Sharma", whatsapp: "919876543210", status: "Delivered", delivered: "20/07/2024 11:15 AM" },
-    { id: 3, addressableName: "Priya", givenName: "Patel", whatsapp: "918765432109", status: "Failed", delivered: "-NA-" },
-    { id: 4, addressableName: "Sneha", givenName: "Desai", whatsapp: "917654321098", status: "Not Sent", delivered: "-NA-" },
-    { id: 5, addressableName: "Vikram", givenName: "Singh", whatsapp: "916543210987", status: "Deleted", delivered: "-NA-" },
-    { id: 6, addressableName: "Anjali", givenName: "Nair", whatsapp: "915432109876", status: "Sent", delivered: "20/07/2024 02:00 PM" },
+  const [activeTab, setActiveTab]           = useState("All");
+  const [selectedIds, setSelectedIds]       = useState<string[]>([]);
+  const [recipients, setRecipients]         = useState<any[]>([]);
+  const [template, setTemplate]             = useState<any | null>(null);
+  const [loading, setLoading]               = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      const [recRes, tmplRes] = await Promise.all([
+        supabase
+          .from('message_recipients')
+          .select('*')
+          .eq('batch_id', message.id)
+          .order('created_at', { ascending: true }),
+        message.template_id
+          ? supabase.from('message_templates').select('*').eq('id', message.template_id).single()
+          : Promise.resolve({ data: null }),
+      ]);
+      setRecipients(recRes.data ?? []);
+      setTemplate((tmplRes as any).data ?? null);
+      setLoading(false);
+    }
+    load();
+  }, [message.id, message.template_id]);
+
+  const statusLabel: Record<string, string> = {
+    sent: 'Sent', failed: 'Failed', not_sent: 'Not Sent', partially_completed: 'Partial',
+  };
+  const statusStyle: Record<string, string> = {
+    sent:     'bg-green-50 text-green-600',
+    failed:   'bg-red-50 text-red-600',
+    not_sent: 'bg-gray-100 text-gray-600',
+  };
+
+  const tabDefs = [
+    { key: 'All',      label: 'All' },
+    { key: 'sent',     label: 'Sent' },
+    { key: 'failed',   label: 'Failed' },
+    { key: 'not_sent', label: 'Not Sent' },
   ];
 
-  const getStatusCount = (status: string) => {
-    if (status === "All") return batchRecipients.length;
-    return batchRecipients.filter(r => r.status === status).length;
-  };
+  const filteredRecipients = activeTab === 'All'
+    ? recipients
+    : recipients.filter(r => r.status === activeTab);
 
-  const tabs = [
-    { label: "Not Sent", count: getStatusCount("Not Sent"), color: "bg-gray-100 text-gray-600" },
-    { label: "Sent", count: getStatusCount("Sent"), color: "bg-green-50 text-green-600" },
-    { label: "Delivered", count: getStatusCount("Delivered"), color: "bg-blue-50 text-blue-600" },
-    { label: "Failed", count: getStatusCount("Failed"), color: "bg-red-50 text-red-600" },
-    { label: "Deleted", count: getStatusCount("Deleted"), color: "bg-red-50 text-red-600" },
-    { label: "All", count: getStatusCount("All"), color: "bg-gray-800 text-white" },
-  ];
-
-  const filteredRecipients = activeTab === "All" 
-    ? batchRecipients 
-    : batchRecipients.filter(r => r.status === activeTab);
-
-  const handleSelectAll = () => {
-    if (selectedRecipients.length === filteredRecipients.length) {
-      setSelectedRecipients([]);
-    } else {
-      setSelectedRecipients(filteredRecipients.map(r => r.id));
-    }
-  };
-
-  const toggleRecipient = (id: number) => {
-    setSelectedRecipients(prev => 
-      prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]
-    );
-  };
-
-  const getStatusStyle = (status: string) => {
-    switch (status) {
-      case "Sent": return "bg-green-50 text-green-600";
-      case "Delivered": return "bg-blue-50 text-blue-600";
-      case "Failed": return "bg-red-50 text-red-600";
-      case "Not Sent": return "bg-gray-100 text-gray-600";
-      case "Deleted": return "bg-orange-50 text-orange-600";
-      default: return "bg-gray-50 text-gray-500";
-    }
-  };
+  const batchName    = message.template_name ?? message.batch_name ?? 'Untitled';
+  const sentDate     = message.sent_at ? new Date(message.sent_at) : null;
+  const previewText  = template?.content ?? '—';
 
   return (
     <div className="p-8 space-y-6">
-      {/* Back Button */}
-      <button 
-        onClick={onBack}
-        className="flex items-center text-sm font-bold text-gray-600 hover:text-gray-900 transition-colors"
-      >
-        <ChevronLeft size={18} className="mr-1" />
-        Back
+      {/* Back */}
+      <button onClick={onBack} className="flex items-center text-sm font-bold text-gray-600 hover:text-gray-900 transition-colors">
+        <ChevronLeft size={18} className="mr-1" /> Back
       </button>
 
-      {/* Header Section */}
+      {/* Header */}
       <div className="flex justify-between items-center bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
         <div className="space-y-1">
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">From</p>
-          <h2 className="text-2xl font-bold text-[#1B1A16]">{message.sender} (919049019382)</h2>
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Batch</p>
+          <h2 className="text-2xl font-bold text-[#1B1A16]">{batchName}</h2>
+          <div className="flex items-center space-x-4 text-xs text-gray-500 mt-1">
+            <span>Total: <strong>{message.total_recipients}</strong></span>
+            <span>Sent: <strong className="text-green-600">{message.sent_count}</strong></span>
+            <span>Failed: <strong className="text-red-600">{message.failed_count}</strong></span>
+            {sentDate && <span>Date: <strong>{sentDate.toLocaleDateString('en-IN')}</strong></span>}
+          </div>
         </div>
-        <div className="flex items-center space-x-3">
-          <button className="flex items-center space-x-2 px-4 py-2 bg-white border border-red-200 text-red-600 rounded-lg text-sm font-bold hover:bg-red-50 transition-colors">
-            <Trash2 size={16} />
-            <span>Delete Batch</span>
-          </button>
-          <button className="flex items-center space-x-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm font-bold hover:bg-gray-50 transition-colors">
-            <RefreshCw size={16} />
-            <span>Update Status</span>
-          </button>
-        </div>
+        <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${
+          message.status === 'completed' ? 'bg-green-100 text-green-700' :
+          message.status === 'failed'    ? 'bg-red-100 text-red-700' :
+          'bg-yellow-100 text-yellow-700'
+        }`}>{message.status}</span>
       </div>
 
       <div className="flex flex-col lg:flex-row gap-8">
-        {/* Left: Phone Preview */}
+        {/* Phone Preview */}
         <div className="w-full lg:w-[350px] flex-shrink-0">
           <div className="bg-[#1B1A16] rounded-[40px] p-3 shadow-2xl relative border-[6px] border-[#7C5275] h-[600px]">
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-7 bg-[#1B1A16] rounded-b-2xl z-20 flex items-center justify-center">
@@ -328,26 +326,32 @@ const MessageBatchView = ({ message, onBack }: { message: any; onBack: () => voi
                     <Users size={20} className="text-gray-600" />
                   </div>
                   <div>
-                    <p className="text-sm font-bold">{message.sender}</p>
-                    <p className="text-[10px] opacity-80">919049019382</p>
+                    <p className="text-sm font-bold">Portal</p>
+                    <p className="text-[10px] opacity-80">WhatsApp</p>
                   </div>
                 </div>
-                <div className="flex items-center space-x-4">
-                  <Video size={18} />
-                  <Phone size={18} />
-                </div>
+                <div className="flex items-center space-x-4"><Video size={18} /><Phone size={18} /></div>
               </div>
-              <div className="flex-1 p-4 space-y-4 relative">
-                <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ backgroundImage: 'url("https://picsum.photos/seed/whatsapp/400/800")' }}></div>
-                <div className="bg-gray-400/30 text-center py-1 rounded text-[10px] font-medium text-gray-600 relative z-10">20/07/2024</div>
-                <div className="max-w-[85%] bg-white rounded-lg rounded-tl-none p-3 shadow-sm relative z-10">
-                  <div className="text-xs text-gray-800 leading-relaxed">
-                    Dear Laxman Kubal,<br/><br/>
-                    My beloved Friend is finally getting married. We would love that you could grace us with your presence and blessings at the festivities. Click <span className="text-blue-500 underline cursor-pointer break-all">https://staging8.teaminertia.com/eventflow/microsite.php?source=46cb518f2478f732b91b2fd90e6ab09a&target=6f2f8c727059345512332c8903ef406e</span> to RSVP.<br/><br/>
-                    Thank you.
+              <div className="flex-1 p-4 space-y-4 relative overflow-y-auto">
+                {sentDate && (
+                  <div className="bg-gray-400/30 text-center py-1 rounded text-[10px] font-medium text-gray-600 relative z-10">
+                    {sentDate.toLocaleDateString('en-IN')}
                   </div>
-                  <div className="flex justify-end items-center space-x-1 mt-1">
-                    <span className="text-[9px] text-gray-400">12:00 am</span>
+                )}
+                <div className="max-w-[85%] bg-white rounded-lg rounded-tl-none p-3 shadow-sm relative z-10">
+                  {template?.media_url && (
+                    <div className="mb-2 rounded overflow-hidden">
+                      <img src={template.media_url} alt="media" className="w-full h-auto max-h-[150px] object-cover" />
+                    </div>
+                  )}
+                  <div className="text-xs text-gray-800 leading-relaxed whitespace-pre-wrap break-words">
+                    {batchName && <p className="font-bold mb-1 uppercase">{batchName}</p>}
+                    {previewText}
+                  </div>
+                  <div className="flex justify-end mt-1">
+                    <span className="text-[9px] text-gray-400">
+                      {sentDate ? sentDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : ''}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -355,42 +359,37 @@ const MessageBatchView = ({ message, onBack }: { message: any; onBack: () => voi
           </div>
         </div>
 
-        {/* Right: Status & Table */}
+        {/* Right: Tabs + Table */}
         <div className="flex-1 space-y-6">
           {/* Status Tabs */}
           <div className="flex flex-wrap gap-2">
-            {tabs.map((tab) => (
+            {tabDefs.map(tab => (
               <button
-                key={tab.label}
-                onClick={() => {
-                  setActiveTab(tab.label);
-                  setSelectedRecipients([]);
-                }}
+                key={tab.key}
+                onClick={() => { setActiveTab(tab.key); setSelectedIds([]); }}
                 className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                  activeTab === tab.label 
-                    ? 'bg-[#1B1A16] text-white shadow-md' 
+                  activeTab === tab.key
+                    ? 'bg-[#1B1A16] text-white shadow-md'
                     : 'bg-white text-gray-500 border border-gray-200 hover:border-gray-300'
                 }`}
               >
-                {tab.label}: {tab.count}
+                {tab.label}: {tab.key === 'All' ? recipients.length : recipients.filter(r => r.status === tab.key).length}
               </button>
             ))}
           </div>
 
           {/* Info Banner */}
           <div className="bg-white p-4 rounded-xl border border-gray-200 space-y-2">
-            <div className="flex items-start space-x-2 text-[11px] text-gray-500">
-              <div className="w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center flex-shrink-0 text-[10px] mt-0.5">i</div>
-              <span>Delivery is subject to the recipient being in a network/WiFi coverage area.</span>
-            </div>
-            <div className="flex items-start space-x-2 text-[11px] text-gray-500">
-              <div className="w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center flex-shrink-0 text-[10px] mt-0.5">i</div>
-              <span>Select "Delete Batch" if you wish to discontinue the process for the messages "NOT SENT".</span>
-            </div>
-            <div className="flex items-start space-x-2 text-[11px] text-gray-500">
-              <div className="w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center flex-shrink-0 text-[10px] mt-0.5">i</div>
-              <span>Messages will be marked as "Failed" if the recipient's WhatsApp number is wrong.</span>
-            </div>
+            {[
+              'Delivery is subject to the recipient being in a network/WiFi coverage area.',
+              'Messages will be marked as "Failed" if the recipient\'s WhatsApp number is wrong.',
+              'Sent time reflects when the message was dispatched from the portal.',
+            ].map((tip, i) => (
+              <div key={i} className="flex items-start space-x-2 text-[11px] text-gray-500">
+                <div className="w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center flex-shrink-0 text-[10px] mt-0.5">i</div>
+                <span>{tip}</span>
+              </div>
+            ))}
           </div>
 
           {/* Recipient Table */}
@@ -399,11 +398,9 @@ const MessageBatchView = ({ message, onBack }: { message: any; onBack: () => voi
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
                   <th className="px-4 py-3 w-10">
-                    <input 
-                      type="checkbox" 
-                      className="rounded border-gray-300 cursor-pointer"
-                      checked={filteredRecipients.length > 0 && selectedRecipients.length === filteredRecipients.length}
-                      onChange={handleSelectAll}
+                    <input type="checkbox" className="rounded border-gray-300 cursor-pointer"
+                      checked={filteredRecipients.length > 0 && selectedIds.length === filteredRecipients.length}
+                      onChange={() => setSelectedIds(selectedIds.length === filteredRecipients.length ? [] : filteredRecipients.map(r => r.id))}
                     />
                   </th>
                   <th className="px-4 py-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider">#</th>
@@ -411,41 +408,303 @@ const MessageBatchView = ({ message, onBack }: { message: any; onBack: () => voi
                   <th className="px-4 py-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider border-l border-gray-200 text-center">Given Name</th>
                   <th className="px-4 py-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider border-l border-gray-200 text-center">WhatsApp Number</th>
                   <th className="px-4 py-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider border-l border-gray-200 text-center">Status</th>
-                  <th className="px-4 py-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider border-l border-gray-200 text-center">Delivered</th>
+                  <th className="px-4 py-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider border-l border-gray-200 text-center">Sent At</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {filteredRecipients.map((rec, index) => (
-                  <tr key={rec.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3">
-                      <input 
-                        type="checkbox" 
-                        className="rounded border-gray-300 cursor-pointer"
-                        checked={selectedRecipients.includes(rec.id)}
-                        onChange={() => toggleRecipient(rec.id)}
-                      />
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{index + 1}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600 border-l border-gray-200 text-center">{rec.addressableName}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600 border-l border-gray-200 text-center">{rec.givenName}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600 border-l border-gray-200 text-center">{rec.whatsapp}</td>
-                    <td className="px-4 py-3 border-l border-gray-200 text-center">
-                      <span className={`px-2 py-1 text-[10px] font-bold rounded uppercase ${getStatusStyle(rec.status)}`}>
-                        {rec.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600 border-l border-gray-200 text-center">{rec.delivered}</td>
-                  </tr>
-                ))}
-                {filteredRecipients.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-gray-500 italic">
-                      No recipients found with status "{activeTab}"
-                    </td>
-                  </tr>
+                {loading ? (
+                  <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400 italic">Loading…</td></tr>
+                ) : filteredRecipients.length === 0 ? (
+                  <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-500 italic">No recipients for "{activeTab}"</td></tr>
+                ) : (
+                  filteredRecipients.map((rec, idx) => (
+                    <tr key={rec.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3">
+                        <input type="checkbox" className="rounded border-gray-300 cursor-pointer"
+                          checked={selectedIds.includes(rec.id)}
+                          onChange={() => setSelectedIds(prev => prev.includes(rec.id) ? prev.filter(x => x !== rec.id) : [...prev, rec.id])}
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{idx + 1}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 border-l border-gray-200 text-center">{rec.addressable_name}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 border-l border-gray-200 text-center">{rec.given_name ?? '—'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 border-l border-gray-200 text-center">{rec.whatsapp_number}</td>
+                      <td className="px-4 py-3 border-l border-gray-200 text-center">
+                        <span className={`px-2 py-1 text-[10px] font-bold rounded uppercase ${statusStyle[rec.status] ?? 'bg-gray-50 text-gray-500'}`}>
+                          {statusLabel[rec.status] ?? rec.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600 border-l border-gray-200 text-center">
+                        {rec.sent_at ? new Date(rec.sent_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—'}
+                      </td>
+                    </tr>
+                  ))
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const TalukaListingContent = () => {
+  const { rows: talukaRows, loading: talukasLoading } = useTalukas();
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const filteredData = talukaRows.filter(item =>
+    (item.taluka_name ?? "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+    item.village_name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  return (
+    <div className="p-8 space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold text-[#1B1A16]">Taluka & Villages</h2>
+          <p className="text-sm text-gray-500">Manage your talukas and villages listing</p>
+        </div>
+        <button className="flex items-center space-x-2 px-6 py-3 bg-[#1B1A16] text-white rounded-xl font-bold hover:bg-[#2d2c26] transition-all shadow-lg">
+          <Plus size={20} />
+          <span>Add New</span>
+        </button>
+      </div>
+
+      {/* Filters Section */}
+      <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+        <div className="relative max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+          <input
+            type="text"
+            placeholder="Search taluka or village..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#FFE400] outline-none transition-all"
+          />
+        </div>
+      </div>
+
+      {/* Listing Table */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">#</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Taluka Name</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Village Name</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {talukasLoading ? (
+                <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-400 italic">Loading…</td></tr>
+              ) : filteredData.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-6 py-12 text-center text-gray-500 italic">
+                    No records found matching your filters.
+                  </td>
+                </tr>
+              ) : (
+                filteredData.map((item, index) => (
+                  <tr key={item.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 text-sm text-gray-600 font-medium">{index + 1}</td>
+                    <td className="px-6 py-4 text-sm font-bold text-gray-900">{item.taluka_name ?? '—'}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{item.village_name}</td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex justify-end space-x-2">
+                        <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                          <Edit size={16} />
+                        </button>
+                        <button className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination Placeholder */}
+        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+          <p className="text-xs text-gray-500">Showing {filteredData.length} of {talukaRows.length} entries</p>
+          <div className="flex items-center space-x-2">
+            <button className="px-3 py-1 border border-gray-300 rounded-lg text-xs font-medium text-gray-500 hover:bg-white transition-all">Previous</button>
+            <button className="px-3 py-1 bg-[#1B1A16] text-white rounded-lg text-xs font-bold shadow-sm">1</button>
+            <button className="px-3 py-1 border border-gray-300 rounded-lg text-xs font-medium text-gray-500 hover:bg-white transition-all">Next</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+function formatDate(ts: string | null | undefined): string {
+  if (!ts) return '—';
+  return new Date(ts).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+const UsersListingContent = () => {
+  const { users, loading: usersLoading } = useUsers();
+  const [searchTerm, setSearchTerm] = useState("");
+  const [roleFilter, setRoleFilter] = useState("All");
+  const [statusFilter, setStatusFilter] = useState("All");
+
+  const filteredUsers = users.filter(user => {
+    const matchesSearch =
+      (user.full_name ?? "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.email.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesRole = roleFilter === "All" || user.role === roleFilter;
+    const matchesStatus =
+      statusFilter === "All" ||
+      (statusFilter === "Active" && user.is_active) ||
+      (statusFilter === "Inactive" && !user.is_active);
+    return matchesSearch && matchesRole && matchesStatus;
+  });
+
+  return (
+    <div className="p-8 space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold text-[#1B1A16]">User Management</h2>
+          <p className="text-sm text-gray-500">Manage system users and their access levels</p>
+        </div>
+        <button className="flex items-center space-x-2 px-6 py-3 bg-[#1B1A16] text-white rounded-xl font-bold hover:bg-[#2d2c26] transition-all shadow-lg">
+          <Plus size={20} />
+          <span>Add New User</span>
+        </button>
+      </div>
+
+      {/* Filters Section */}
+      <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+            <input
+              type="text"
+              placeholder="Search by name, username or email..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#FFE400] outline-none transition-all"
+            />
+          </div>
+          
+          <select
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(e.target.value)}
+            className="px-4 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#FFE400] outline-none bg-white transition-all"
+          >
+            <option value="All">All Roles</option>
+            <option value="admin">Admin</option>
+            <option value="moderator">Moderator</option>
+            <option value="user">User</option>
+          </select>
+
+          <select 
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-4 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#FFE400] outline-none bg-white transition-all"
+          >
+            <option value="All">All Status</option>
+            <option value="Active">Active</option>
+            <option value="Inactive">Inactive</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Listing Table */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">#</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">User Info</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Username</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Role</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Created At</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Last Login</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {usersLoading ? (
+                <tr><td colSpan={8} className="px-6 py-12 text-center text-gray-400 italic">Loading…</td></tr>
+              ) : filteredUsers.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-6 py-12 text-center text-gray-500 italic">
+                    No users found matching your filters.
+                  </td>
+                </tr>
+              ) : (
+                filteredUsers.map((user, index) => {
+                  const displayName = user.full_name || user.username;
+                  const initials = displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
+                  return (
+                    <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4 text-sm text-gray-600 font-medium">{index + 1}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 font-bold text-xs">
+                            {initials}
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-gray-900">{displayName}</p>
+                            <p className="text-xs text-gray-500">{user.email}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">{user.username}</td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${
+                          user.role === "admin" ? "bg-purple-100 text-purple-700" :
+                          user.role === "moderator" ? "bg-blue-100 text-blue-700" :
+                          "bg-gray-100 text-gray-700"
+                        }`}>
+                          {user.role}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-xs text-gray-500">{formatDate(user.created_at)}</td>
+                      <td className="px-6 py-4 text-xs text-gray-500">{formatDate(user.last_login)}</td>
+                      <td className="px-6 py-4">
+                        <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${
+                          user.is_active
+                            ? "bg-green-100 text-green-700"
+                            : "bg-red-100 text-red-700"
+                        }`}>
+                          {user.is_active ? "Active" : "Inactive"}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex justify-end space-x-2">
+                          <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                            <Edit size={16} />
+                          </button>
+                          <button className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+        
+        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+          <p className="text-xs text-gray-500">Showing {filteredUsers.length} of {users.length} users</p>
+          <div className="flex items-center space-x-2">
+            <button className="px-3 py-1 border border-gray-300 rounded-lg text-xs font-medium text-gray-500 hover:bg-white transition-all">Previous</button>
+            <button className="px-3 py-1 bg-[#1B1A16] text-white rounded-lg text-xs font-bold shadow-sm">1</button>
+            <button className="px-3 py-1 border border-gray-300 rounded-lg text-xs font-medium text-gray-500 hover:bg-white transition-all">Next</button>
           </div>
         </div>
       </div>
@@ -466,10 +725,121 @@ const TalukaVillageContent = () => {
   const [selectedField, setSelectedField] = useState("");
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+
+  async function uploadMedia(file: File): Promise<string> {
+    const ext = file.name.split('.').pop();
+    const path = `whatsapp/${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true });
+    if (error) throw new Error(`Media upload failed: ${error.message}`);
+    const { data } = supabase.storage.from('media').getPublicUrl(path);
+    return data.publicUrl;
+  }
+
+  function substituteFields(text: string, guest: typeof guests[0]): string {
+    return text
+      .replace(/\{addressable-name\}/g, guest.addressable_name)
+      .replace(/\{given-name\}/g, guest.given_name ?? '')
+      .replace(/\{rsvp-link\}/g, '[RSVP Link]')
+      .replace(/\{arrival-details\}/g, '[Arrival Details]')
+      .replace(/\{departure-details\}/g, '[Departure Details]')
+      .replace(/\{hotel-details\}/g, '[Hotel Details]');
+  }
+
+  async function handleSend() {
+    if (!messageText.trim()) {
+      setSendError('Please enter a message before sending.');
+      return;
+    }
+    setSending(true);
+    setSendError(null);
+
+    try {
+      const currentUser = JSON.parse(localStorage.getItem('enough_goa_user') || 'null');
+      const userId: string | null = currentUser?.id ?? null;
+
+      // Upload media once if attached
+      let mediaUrl: string | null = null;
+      if (mediaFile) mediaUrl = await uploadMedia(mediaFile);
+
+      const guestsToSend = guests.filter(g => selectedGuests.includes(g.id));
+      const batchName = templateName.trim() || 'Untitled';
+
+      // 1. Log template
+      const { data: tmpl } = await supabase
+        .from('message_templates')
+        .insert({ name: batchName, content: messageText, media_url: mediaUrl, media_type: mediaFile?.type ?? null, created_by: userId })
+        .select('id').single();
+
+      // 2. Create batch
+      const { data: batch } = await supabase
+        .from('message_batches')
+        .insert({ template_id: tmpl?.id ?? null, batch_name: batchName, total_recipients: guestsToSend.length, status: 'processing', sent_by: userId })
+        .select('id').single();
+
+      // 3. Send each guest and log recipient row
+      const errors: string[] = [];
+      let sentCount = 0, failedCount = 0;
+
+      for (const guest of guestsToSend) {
+        const phone = guest.whatsapp_number || guest.mobile;
+        const body_text = substituteFields(messageText, guest);
+        const fullMessage = templateName.trim()
+          ? `*${templateName.trim().toUpperCase()}*\n\n${body_text}`
+          : body_text;
+        const payload: Record<string, string> = { phone, message: fullMessage };
+        if (mediaUrl) { payload.media_url = mediaUrl; payload.media_type = mediaFile!.type; }
+
+        const { data: result, error: fnError } = await supabase.functions.invoke('send-whatsapp', { body: payload });
+        const success = !fnError && result?.ok;
+        const errMsg = fnError?.message ?? (!result?.ok ? (result?.data?.message || result?.data?.raw || 'API error') : null);
+
+        if (success) sentCount++; else { failedCount++; errors.push(`${guest.addressable_name}: ${errMsg}`); }
+
+        await supabase.from('message_recipients').insert({
+          batch_id: batch?.id ?? null,
+          guest_id: guest.id,
+          addressable_name: guest.addressable_name,
+          given_name: guest.given_name ?? null,
+          whatsapp_number: phone,
+          message_content: fullMessage,
+          media_url: mediaUrl,
+          status: success ? 'sent' : 'failed',
+          error_message: errMsg ?? null,
+          sent_at: success ? new Date().toISOString() : null,
+        });
+      }
+
+      // 4. Update batch with final counts
+      if (batch?.id) {
+        await supabase.from('message_batches').update({
+          sent_count: sentCount,
+          failed_count: failedCount,
+          status: failedCount === guestsToSend.length ? 'failed' : sentCount === guestsToSend.length ? 'completed' : 'partially_completed',
+        }).eq('id', batch.id);
+      }
+
+      if (errors.length > 0 && errors.length === guestsToSend.length) {
+        setSendError(`All messages failed:\n${errors.join('\n')}`);
+      } else {
+        setShowCreateModal(false);
+        setShowSuccessModal(true);
+        setSelectedGuests([]);
+        setTemplateName('');
+        setMessageText('');
+        setMediaFile(null);
+        setMediaPreview(null);
+      }
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : 'Unexpected error');
+    } finally {
+      setSending(false);
+    }
+  }
 
   const filteredGuests = guests.filter(guest =>
-    guest.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    guest.taluka.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (guest.addressable_name + " " + (guest.given_name ?? "")).toLowerCase().includes(searchTerm.toLowerCase()) ||
     guest.mobile.includes(searchTerm)
   );
 
@@ -561,13 +931,9 @@ const TalukaVillageContent = () => {
             </thead>
             <tbody className="divide-y divide-gray-200">
               {guestsLoading ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-gray-400 italic">Loading guests…</td>
-                </tr>
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400 italic">Loading guests…</td></tr>
               ) : filteredGuests.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-gray-500 italic">No guests found matching your search.</td>
-                </tr>
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-500 italic">No guests found matching your search.</td></tr>
               ) : (
                 filteredGuests.map((guest, idx) => (
                   <tr key={guest.id} className="hover:bg-gray-50 transition-colors">
@@ -580,9 +946,11 @@ const TalukaVillageContent = () => {
                       />
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 border-r border-gray-200">{idx + 1}</td>
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900 border-r border-gray-200">{guest.name}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600 border-r border-gray-200">{guest.mobile}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600 border-r border-gray-200">{guest.taluka}</td>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900 border-r border-gray-200">
+                      {guest.addressable_name}{guest.given_name ? ` ${guest.given_name}` : ""}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600 border-r border-gray-200">{guest.whatsapp_number || guest.mobile}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600 border-r border-gray-200">{guest.taluka_name ?? '—'}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{guest.email ?? '—'}</td>
                   </tr>
                 ))
@@ -725,16 +1093,25 @@ const TalukaVillageContent = () => {
                     </div>
                   </div>
 
+                  {sendError && (
+                    <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 whitespace-pre-line">
+                      {sendError}
+                    </div>
+                  )}
+
                   <div className="flex justify-center pt-4">
-                    <button 
-                      onClick={() => {
-                        setShowCreateModal(false);
-                        setShowSuccessModal(true);
-                        setSelectedGuests([]);
-                      }}
-                      className="px-12 py-3 bg-[#1B1A16] text-white rounded-lg font-bold hover:bg-[#2d2c26] transition-all shadow-lg uppercase tracking-wider"
+                    <button
+                      onClick={handleSend}
+                      disabled={sending || !messageText.trim()}
+                      className={`px-12 py-3 rounded-lg font-bold transition-all shadow-lg uppercase tracking-wider ${
+                        sending || !messageText.trim()
+                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          : 'bg-[#1B1A16] text-white hover:bg-[#2d2c26]'
+                      }`}
                     >
-                      Send Message
+                      {sending
+                        ? `Sending to ${selectedGuests.length} guest${selectedGuests.length !== 1 ? 's' : ''}…`
+                        : `Send to ${selectedGuests.length} Guest${selectedGuests.length !== 1 ? 's' : ''}`}
                     </button>
                   </div>
                 </div>
@@ -830,8 +1207,8 @@ const TalukaVillageContent = () => {
 };
 
 const CommunicationHubContent = () => {
-  const { guests, loading: guestsLoading } = useGuests();
-  const { batches: messageBatches, loading: batchesLoading } = useMessages();
+  const { guests } = useGuests();
+  const { batches: messageBatches, loading: batchesLoading, refetch: refetchBatches } = useMessages();
   const [showQR, setShowQR] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -840,6 +1217,8 @@ const CommunicationHubContent = () => {
   const [selectedTaluka, setSelectedTaluka] = useState("All");
   const [selectedVillage, setSelectedVillage] = useState("All");
   const [viewingMessage, setViewingMessage] = useState<any | null>(null);
+  const [hubSending, setHubSending] = useState(false);
+  const [hubSendError, setHubSendError] = useState<string | null>(null);
 
   // Template Form State
   const [templateName, setTemplateName] = useState("");
@@ -848,22 +1227,134 @@ const CommunicationHubContent = () => {
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
 
-  const [connectedInstance] = useState({ name: "Yogesh Chodankar", mobile: "+91 98765 43210" });
+  async function uploadHubMedia(file: File): Promise<string> {
+    const ext = file.name.split('.').pop();
+    const path = `whatsapp/${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true });
+    if (error) throw new Error(`Media upload failed: ${error.message}`);
+    const { data } = supabase.storage.from('media').getPublicUrl(path);
+    return data.publicUrl;
+  }
 
-  // Derive taluka/village lists from real guests
-  const talukas = ["All", ...Array.from(new Set(guests.map(g => g.taluka).filter(Boolean)))];
-  const villages = ["All", ...Array.from(new Set(
-    guests
-      .filter(g => selectedTaluka === "All" || g.taluka === selectedTaluka)
-      .map(g => g.village)
-      .filter((v): v is string => !!v)
-  ))];
+  function substituteHubFields(text: string, guest: typeof guests[0]): string {
+    return text
+      .replace(/\{addressable-name\}/g, guest.addressable_name)
+      .replace(/\{given-name\}/g, guest.given_name ?? '')
+      .replace(/\{rsvp-link\}/g, '[RSVP Link]')
+      .replace(/\{arrival-details\}/g, '[Arrival Details]')
+      .replace(/\{departure-details\}/g, '[Departure Details]')
+      .replace(/\{hotel-details\}/g, '[Hotel Details]');
+  }
 
-  const filteredPeople = guests.filter(g => {
-    const talukaMatch = selectedTaluka === "All" || g.taluka === selectedTaluka;
-    const villageMatch = selectedVillage === "All" || g.village === selectedVillage;
+  async function handleHubSend() {
+    if (!messageText.trim()) { setHubSendError('Please enter a message.'); return; }
+    setHubSending(true);
+    setHubSendError(null);
+    try {
+      const currentUser = JSON.parse(localStorage.getItem('enough_goa_user') || 'null');
+      const userId: string | null = currentUser?.id ?? null;
+
+      let mediaUrl: string | null = null;
+      if (mediaFile) mediaUrl = await uploadHubMedia(mediaFile);
+
+      const recipientGuests = guests.filter(g => selectedRecipients.includes(g.id));
+      const batchName = templateName.trim() || 'Untitled';
+
+      // 1. Log template
+      const { data: tmpl } = await supabase
+        .from('message_templates')
+        .insert({ name: batchName, content: messageText, media_url: mediaUrl, media_type: mediaFile?.type ?? null, created_by: userId })
+        .select('id').single();
+
+      // 2. Create batch
+      const { data: batch } = await supabase
+        .from('message_batches')
+        .insert({ template_id: tmpl?.id ?? null, batch_name: batchName, total_recipients: recipientGuests.length, status: 'processing', sent_by: userId })
+        .select('id').single();
+
+      // 3. Send each recipient and log
+      const errors: string[] = [];
+      let sentCount = 0, failedCount = 0;
+
+      for (const guest of recipientGuests) {
+        const phone = guest.whatsapp_number || guest.mobile;
+        const body_text = substituteHubFields(messageText, guest);
+        const fullMessage = templateName.trim()
+          ? `*${templateName.trim().toUpperCase()}*\n\n${body_text}`
+          : body_text;
+        const payload: Record<string, string> = { phone, message: fullMessage };
+        if (mediaUrl) { payload.media_url = mediaUrl; payload.media_type = mediaFile!.type; }
+
+        const { data: result, error: fnError } = await supabase.functions.invoke('send-whatsapp', { body: payload });
+        const success = !fnError && result?.ok;
+        const errMsg = fnError?.message ?? (!result?.ok ? (result?.data?.message || result?.data?.raw || 'API error') : null);
+
+        if (success) sentCount++; else { failedCount++; errors.push(`${guest.addressable_name}: ${errMsg}`); }
+
+        await supabase.from('message_recipients').insert({
+          batch_id: batch?.id ?? null,
+          guest_id: guest.id,
+          addressable_name: guest.addressable_name,
+          given_name: guest.given_name ?? null,
+          whatsapp_number: phone,
+          message_content: fullMessage,
+          media_url: mediaUrl,
+          status: success ? 'sent' : 'failed',
+          error_message: errMsg ?? null,
+          sent_at: success ? new Date().toISOString() : null,
+        });
+      }
+
+      // 4. Update batch counts
+      if (batch?.id) {
+        await supabase.from('message_batches').update({
+          sent_count: sentCount,
+          failed_count: failedCount,
+          status: failedCount === recipientGuests.length ? 'failed' : sentCount === recipientGuests.length ? 'completed' : 'partially_completed',
+        }).eq('id', batch.id);
+      }
+
+      if (errors.length > 0 && errors.length === recipientGuests.length) {
+        setHubSendError(`All messages failed:\n${errors.join('\n')}`);
+      } else {
+        setShowCreateModal(false);
+        setShowSuccessModal(true);
+        setStep(1);
+        setSelectedRecipients([]);
+        setTemplateName('');
+        setMessageText('');
+        setMediaFile(null);
+        setMediaPreview(null);
+        await refetchBatches();
+      }
+    } catch (err) {
+      setHubSendError(err instanceof Error ? err.message : 'Unexpected error');
+    } finally {
+      setHubSending(false);
+    }
+  }
+
+  const [connectedInstance] = useState({ name: "Portal", mobile: "" });
+
+  // Derive taluka/village lists from live guests
+  const talukaPeopleRaw = guests.map(g => ({
+    id: g.id,
+    name: `${g.addressable_name}${g.given_name ? " " + g.given_name : ""}`,
+    mobile: g.whatsapp_number || g.mobile,
+    taluka: g.taluka_name ?? "",
+    village: g.village_name ?? "",
+  }));
+  const talukaPeople = talukaPeopleRaw; // alias kept for below code compatibility
+
+
+  const filteredPeople = talukaPeople.filter(person => {
+    const talukaMatch = selectedTaluka === "All" || person.taluka === selectedTaluka;
+    const villageMatch = selectedVillage === "All" || person.village === selectedVillage;
     return talukaMatch && villageMatch;
   });
+
+  const talukas = ["All", ...Array.from(new Set(talukaPeople.map(p => p.taluka)))];
+  const villages = ["All", ...Array.from(new Set(talukaPeople.filter(p => selectedTaluka === "All" || p.taluka === selectedTaluka).map(p => p.village)))];
 
   const handleSelectAll = () => {
     const allFilteredIds = filteredPeople.map(p => p.id);
@@ -1199,28 +1690,30 @@ const CommunicationHubContent = () => {
                         </div>
                       </div>
 
+                      {hubSendError && (
+                        <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 whitespace-pre-line">
+                          {hubSendError}
+                        </div>
+                      )}
                       <div className="flex items-center justify-center space-x-4 pt-4">
-                        <button 
+                        <button
                           onClick={() => setStep(1)}
                           className="px-8 py-3 border-2 border-[#1B1A16] text-[#1B1A16] rounded-lg font-bold hover:bg-gray-50 transition-all uppercase tracking-wider"
                         >
                           Back
                         </button>
-                        <button 
-                          onClick={() => {
-                            setShowCreateModal(false);
-                            setShowSuccessModal(true);
-                            setStep(1);
-                            setSelectedRecipients([]);
-                          }}
-                          disabled={selectedRecipients.length === 0}
+                        <button
+                          onClick={handleHubSend}
+                          disabled={selectedRecipients.length === 0 || hubSending || !messageText.trim()}
                           className={`px-12 py-3 rounded-lg font-bold transition-all shadow-lg uppercase tracking-wider ${
-                            selectedRecipients.length > 0 
-                              ? 'bg-[#1B1A16] text-white hover:bg-[#2d2c26]' 
+                            selectedRecipients.length > 0 && !hubSending && messageText.trim()
+                              ? 'bg-[#1B1A16] text-white hover:bg-[#2d2c26]'
                               : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                           }`}
                         >
-                          Send
+                          {hubSending
+                            ? `Sending to ${selectedRecipients.length}…`
+                            : `Send to ${selectedRecipients.length} Guest${selectedRecipients.length !== 1 ? 's' : ''}`}
                         </button>
                       </div>
                     </motion.div>
@@ -1357,15 +1850,11 @@ const CommunicationHubContent = () => {
           </thead>
           <tbody className="divide-y divide-gray-200">
             {batchesLoading ? (
-              <tr>
-                <td colSpan={6} className="px-6 py-8 text-center text-gray-400 italic">Loading batches…</td>
-              </tr>
+              <tr><td colSpan={6} className="px-6 py-8 text-center text-gray-400 italic">Loading batches…</td></tr>
             ) : messageBatches.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-6 py-8 text-center text-gray-500 italic">No message batches yet.</td>
-              </tr>
+              <tr><td colSpan={6} className="px-6 py-8 text-center text-gray-500 italic">No message batches yet.</td></tr>
             ) : (
-              messageBatches.map((batch) => {
+              messageBatches.map(batch => {
                 const d = new Date(batch.created_at);
                 return (
                   <tr key={batch.id} className="hover:bg-gray-50 transition-colors">
@@ -1373,13 +1862,13 @@ const CommunicationHubContent = () => {
                       className="px-6 py-4 text-sm font-bold text-gray-900 cursor-pointer hover:text-[#1B1A16] hover:underline"
                       onClick={() => setViewingMessage(batch)}
                     >
-                      {batch.title}
+                      {(batch as any).template_name ?? batch.batch_name ?? batch.id.slice(0, 8)}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 border-l border-gray-200">{batch.sender ?? '—'}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600 border-l border-gray-200">{batch.total_recipients}</td>
                     <td className="px-6 py-4 text-sm text-gray-600 border-l border-gray-200">{d.toLocaleDateString('en-IN')}</td>
                     <td className="px-6 py-4 text-sm text-gray-600 border-l border-gray-200">{d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</td>
                     <td className="px-6 py-4 text-sm text-gray-900 border-l border-gray-200 text-center font-medium">{batch.sent_count}</td>
-                    <td className="px-6 py-4 text-sm text-gray-900 border-l border-gray-200 text-center font-medium">{batch.recipient_count}</td>
+                    <td className="px-6 py-4 text-sm text-gray-900 border-l border-gray-200 text-center font-medium">{batch.delivered_count}</td>
                   </tr>
                 );
               })
@@ -1389,7 +1878,7 @@ const CommunicationHubContent = () => {
             <tr className="bg-gray-50 font-bold">
               <td colSpan={4} className="px-6 py-4 text-right text-sm text-gray-900">Total</td>
               <td className="px-6 py-4 text-sm text-gray-900 text-center border-l border-gray-200">{messageBatches.reduce((acc, b) => acc + b.sent_count, 0)}</td>
-              <td className="px-6 py-4 text-sm text-gray-900 text-center border-l border-gray-200">{messageBatches.reduce((acc, b) => acc + b.recipient_count, 0)}</td>
+              <td className="px-6 py-4 text-sm text-gray-900 text-center border-l border-gray-200">{messageBatches.reduce((acc, b) => acc + b.delivered_count, 0)}</td>
             </tr>
           </tfoot>
         </table>
@@ -1399,13 +1888,13 @@ const CommunicationHubContent = () => {
 };
 
 const DashboardContent = () => {
-  const { stats: dashStats, loading: statsLoading } = useDashboard();
+  const { stats: dbStats, loading: statsLoading } = useDashboard();
 
   const liveStats = [
-    { label: "Messages Sent", value: statsLoading ? "…" : (dashStats?.messagesSent ?? 0).toLocaleString(), icon: MessageSquare, color: "bg-blue-100 text-blue-600" },
-    { label: "People Onboard", value: statsLoading ? "…" : (dashStats?.totalGuests ?? 0).toLocaleString(), icon: UserPlus, color: "bg-green-100 text-green-600" },
-    { label: "Message Batches", value: statsLoading ? "…" : (dashStats?.totalBatches ?? 0).toLocaleString(), icon: CheckSquare, color: "bg-purple-100 text-purple-600" },
-    { label: "Talukas Covered", value: statsLoading ? "…" : Object.keys(dashStats?.talukaCounts ?? {}).length.toString(), icon: Calendar, color: "bg-orange-100 text-orange-600" },
+    { label: "Messages Sent",   value: statsLoading ? "…" : (dbStats?.messages_sent  ?? 0).toLocaleString(), icon: MessageSquare, color: "bg-blue-100 text-blue-600" },
+    { label: "People Onboard",  value: statsLoading ? "…" : (dbStats?.people_onboard ?? 0).toLocaleString(), icon: UserPlus,      color: "bg-green-100 text-green-600" },
+    { label: "Active Tasks",    value: statsLoading ? "…" : (dbStats?.active_tasks   ?? 0).toLocaleString(), icon: CheckSquare,   color: "bg-purple-100 text-purple-600" },
+    { label: "Upcoming Events", value: statsLoading ? "…" : (dbStats?.upcoming_events ?? 0).toLocaleString(), icon: Calendar,     color: "bg-orange-100 text-orange-600" },
   ];
 
   return (
@@ -1504,7 +1993,7 @@ const DashboardContent = () => {
 // --- Main App Component ---
 
 export default function App() {
-  const { user, loading: authLoading, signIn, signOut, resetPassword } = useAuth() as any;
+  const { user, loading: authLoading, signIn, signOut } = useAuth();
   const isLoggedIn = !!user;
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [activePage, setActivePage] = useState<Page>("dashboard");
@@ -1531,19 +2020,12 @@ export default function App() {
     }
   };
 
-  const handleForgotPassword = async (e: FormEvent) => {
+  const handleForgotPassword = (e: FormEvent) => {
     e.preventDefault();
-    try {
-      await resetPassword(forgotEmail);
-    } catch {
-      // show success anyway — don't leak whether the email exists
-    }
-    setIsResetSent(true);
+    if (forgotEmail) setIsResetSent(true);
   };
 
-  const handleLogout = () => {
-    signOut();
-  };
+  const handleLogout = () => signOut();
 
   if (authLoading) {
     return (
@@ -1620,6 +2102,7 @@ export default function App() {
                           className="w-full px-4 py-3 rounded-md border border-gray-300 focus:ring-2 focus:ring-[#1B1A16] focus:border-transparent outline-none transition-all pr-12"
                           placeholder="Enter your password"
                           required
+                          autoComplete="current-password"
                         />
                         <button
                           type="button"
@@ -1630,7 +2113,7 @@ export default function App() {
                         </button>
                       </div>
                       <div className="text-right">
-                        <button 
+                        <button
                           type="button"
                           onClick={() => setIsForgotPassword(true)}
                           className="text-xs text-[#1B1A16] hover:underline font-medium"
@@ -1641,8 +2124,9 @@ export default function App() {
                     </div>
 
                     {loginError && (
-                      <p className="text-sm text-red-600 text-center -mt-2">{loginError}</p>
+                      <p className="text-sm text-red-600 text-center">{loginError}</p>
                     )}
+
                     <button
                       type="submit"
                       disabled={loginLoading}
@@ -1774,9 +2258,9 @@ export default function App() {
                 <CommunicationHubContent />
               </motion.div>
             )}
-            {activePage === "taluka" && (
+            {activePage === "guests" && (
               <motion.div
-                key="taluka"
+                key="guests"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
@@ -1785,20 +2269,26 @@ export default function App() {
                 <TalukaVillageContent />
               </motion.div>
             )}
-            {activePage === "users" && (
+            {activePage === "taluka" && (
               <motion.div
-                key="other"
+                key="taluka"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
                 transition={{ duration: 0.3 }}
-                className="p-8 flex flex-col items-center justify-center h-full text-gray-400"
               >
-                <BarChart3 size={64} className="mb-4 opacity-20" />
-                <h2 className="text-2xl font-bold uppercase tracking-widest">
-                  {activePage.replace("-", " ")} Page
-                </h2>
-                <p className="mt-2">This section is currently under development.</p>
+                <TalukaListingContent />
+              </motion.div>
+            )}
+            {activePage === "users" && (
+              <motion.div
+                key="users"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.3 }}
+              >
+                <UsersListingContent />
               </motion.div>
             )}
           </AnimatePresence>

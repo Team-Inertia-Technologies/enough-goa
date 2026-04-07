@@ -115,6 +115,57 @@ export type EventUpdate = Partial<EventInsert>;
 
 export type AppEvent = EventRow;
 
+// ── Guest with joined names ────────────────────────────────────────────────────
+
+export interface GuestWithNames {
+  id: string;
+  addressable_name: string;
+  given_name: string | null;
+  whatsapp_number: string | null;
+  email: string | null;
+  taluka_id: string | null;
+  village_id: string | null;
+  created_at: string;
+  taluka_name: string | null;
+  village_name: string | null;
+}
+
+// ── Taluka / Village row ───────────────────────────────────────────────────────
+
+export interface TalukaVillageRow {
+  id: string;
+  village_name: string;
+  taluka_id: string | null;
+  taluka_name: string | null;
+}
+
+// ── App user detail (public.users — for listing) ──────────────────────────────
+
+export interface AppUserDetail {
+  id: string;
+  username: string;
+  email: string;
+  full_name: string | null;
+  role: string;
+  is_active: boolean;
+  last_login: string | null;
+  created_at: string;
+}
+
+// ── MessageBatch (actual DB shape used in app) ────────────────────────────────
+
+export interface MessageBatch {
+  id: string;
+  template_id: string | null;
+  batch_name: string;
+  total_recipients: number;
+  sent_count: number;
+  failed_count: number;
+  status: string;
+  sent_by: string | null;
+  created_at: string;
+}
+
 // ── Dashboard stats (computed, not a table) ────────────────────────────────────
 
 export interface DashboardStats {
