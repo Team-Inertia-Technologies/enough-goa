@@ -470,6 +470,27 @@ const TalukaListingContent = () => {
 
   const NEW_TALUKA_KEY = "__new__";
 
+  // Delete confirmation state
+  const [deletingRow, setDeletingRow]   = useState<typeof talukaRows[0] | null>(null);
+  const [deleting, setDeleting]         = useState(false);
+  const [deleteError, setDeleteError]   = useState<string | null>(null);
+
+  async function handleDelete() {
+    if (!deletingRow) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const { error } = await supabase.from('villages').delete().eq('id', deletingRow.id);
+      if (error) throw new Error(error.message);
+      await refetch();
+      setDeletingRow(null);
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Delete failed.');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   // Unique talukas (id + name) for the modal dropdown
   const allTalukas: { id: string; name: string }[] = Array.from(
     new Map(
@@ -645,7 +666,7 @@ const TalukaListingContent = () => {
                     <td className="px-6 py-4 text-sm text-gray-600 font-medium">{index + 1}</td>
                     <td className="px-6 py-4 text-sm font-bold text-gray-900">{item.taluka_name ?? '—'}</td>
                     <td className="px-6 py-4 text-sm text-gray-600">{item.village_name}</td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-6 py-4 text-right space-x-1">
                       <button
                         onClick={() => openEdit(item)}
                         className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -653,8 +674,12 @@ const TalukaListingContent = () => {
                       >
                         <Edit size={16} />
                       </button>
-                      <button className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                            <Trash2 size={16} />
+                      <button
+                        onClick={() => { setDeletingRow(item); setDeleteError(null); }}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Delete"
+                      >
+                        <Trash2 size={16} />
                       </button>
                     </td>
                   </tr>
@@ -767,6 +792,53 @@ const TalukaListingContent = () => {
                   className="px-6 py-2.5 rounded-xl text-sm font-bold bg-[#1B1A16] text-white hover:bg-[#2d2c26] transition-colors disabled:opacity-60"
                 >
                   {formSaving ? 'Saving…' : editingRow ? 'Save Changes' : 'Add Village'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {deletingRow && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-sm border border-gray-100"
+            >
+              <div className="px-6 py-6 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-red-100 rounded-full">
+                    <Trash2 size={20} className="text-red-600" />
+                  </div>
+                  <h3 className="text-lg font-bold text-[#1B1A16]">Delete Village</h3>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Are you sure you want to delete{' '}
+                  <span className="font-bold text-gray-900">{deletingRow.village_name}</span>
+                  {deletingRow.taluka_name ? ` (${deletingRow.taluka_name})` : ''}? This action cannot be undone.
+                </p>
+                {deleteError && (
+                  <p className="text-sm text-red-600 bg-red-50 px-4 py-2 rounded-lg">{deleteError}</p>
+                )}
+              </div>
+              <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100">
+                <button
+                  onClick={() => { setDeletingRow(null); setDeleteError(null); }}
+                  disabled={deleting}
+                  className="px-5 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="px-6 py-2.5 rounded-xl text-sm font-bold bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-60"
+                >
+                  {deleting ? 'Deleting…' : 'Delete'}
                 </button>
               </div>
             </motion.div>
