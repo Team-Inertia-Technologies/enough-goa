@@ -450,22 +450,113 @@ const MessageBatchView = ({ message, onBack }: { message: any; onBack: () => voi
 };
 
 const TalukaListingContent = () => {
-  const { rows: talukaRows, loading: talukasLoading } = useTalukas();
+  const { rows: talukaRows, loading: talukasLoading, refetch } = useTalukas();
+
+  // Filter state
   const [searchTerm, setSearchTerm]       = useState("");
   const [talukaFilter, setTalukaFilter]   = useState("All");
   const [villageFilter, setVillageFilter] = useState("All");
 
-  // Unique taluka names for the first dropdown
+  // Modal state
+  const [showModal, setShowModal]   = useState(false);
+  const [editingRow, setEditingRow] = useState<typeof talukaRows[0] | null>(null);
+
+  // Form fields
+  const [formTalukaId, setFormTalukaId]             = useState("");
+  const [formNewTalukaName, setFormNewTalukaName]   = useState("");
+  const [formVillageName, setFormVillageName]       = useState("");
+  const [formSaving, setFormSaving]                 = useState(false);
+  const [formError, setFormError]                   = useState<string | null>(null);
+
+  const NEW_TALUKA_KEY = "__new__";
+
+  // Unique talukas (id + name) for the modal dropdown
+  const allTalukas: { id: string; name: string }[] = Array.from(
+    new Map(
+      talukaRows
+        .filter(r => r.taluka_id && r.taluka_name)
+        .map(r => [r.taluka_id as string, { id: r.taluka_id as string, name: r.taluka_name as string }])
+    ).values()
+  ).sort((a, b) => a.name.localeCompare(b.name));
+
+  function openAdd() {
+    setEditingRow(null);
+    setFormTalukaId("");
+    setFormNewTalukaName("");
+    setFormVillageName("");
+    setFormError(null);
+    setShowModal(true);
+  }
+
+  function openEdit(row: typeof talukaRows[0]) {
+    setEditingRow(row);
+    setFormTalukaId(row.taluka_id ?? "");
+    setFormNewTalukaName("");
+    setFormVillageName(row.village_name);
+    setFormError(null);
+    setShowModal(true);
+  }
+
+  function closeModal() {
+    setShowModal(false);
+    setEditingRow(null);
+    setFormError(null);
+  }
+
+  async function handleSave() {
+    setFormError(null);
+    if (!formVillageName.trim()) { setFormError("Village name is required."); return; }
+    if (!formTalukaId) { setFormError("Please select or create a taluka."); return; }
+    if (formTalukaId === NEW_TALUKA_KEY && !formNewTalukaName.trim()) {
+      setFormError("Please enter the new taluka name."); return;
+    }
+    setFormSaving(true);
+    try {
+      let talukaId = formTalukaId;
+
+      if (formTalukaId === NEW_TALUKA_KEY) {
+        const name = formNewTalukaName.trim();
+        const existing = allTalukas.find(t => t.name.toLowerCase() === name.toLowerCase());
+        if (existing) {
+          talukaId = existing.id;
+        } else {
+          const { data: newT, error: tErr } = await supabase
+            .from('talukas').insert({ name }).select('id').single();
+          if (tErr) throw new Error(`Failed to create taluka: ${tErr.message}`);
+          talukaId = newT.id;
+        }
+      }
+
+      if (editingRow) {
+        const { error: vErr } = await supabase
+          .from('villages')
+          .update({ name: formVillageName.trim(), taluka_id: talukaId || null })
+          .eq('id', editingRow.id);
+        if (vErr) throw new Error(`Failed to update: ${vErr.message}`);
+      } else {
+        const { error: vErr } = await supabase
+          .from('villages')
+          .insert({ name: formVillageName.trim(), taluka_id: talukaId || null });
+        if (vErr) throw new Error(`Failed to add: ${vErr.message}`);
+      }
+
+      await refetch();
+      closeModal();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Something went wrong.');
+    } finally {
+      setFormSaving(false);
+    }
+  }
+
+  // Filter-bar options
   const talukaOptions = ["All", ...Array.from(
     new Set(talukaRows.map(r => r.taluka_name ?? "").filter(Boolean))
   ).sort()];
 
-  // Village options filtered by selected taluka
   const villageOptions = ["All", ...talukaRows
     .filter(r => talukaFilter === "All" || r.taluka_name === talukaFilter)
-    .map(r => r.village_name)
-    .filter(Boolean)
-    .sort()
+    .map(r => r.village_name).filter(Boolean).sort()
     .filter((v, i, arr) => arr.indexOf(v) === i)
   ];
 
@@ -473,29 +564,32 @@ const TalukaListingContent = () => {
     const talukaMatch  = talukaFilter  === "All" || item.taluka_name  === talukaFilter;
     const villageMatch = villageFilter === "All" || item.village_name === villageFilter;
     const searchMatch  =
-      (item.taluka_name  ?? "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (item.taluka_name ?? "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.village_name.toLowerCase().includes(searchTerm.toLowerCase());
     return talukaMatch && villageMatch && searchMatch;
   });
 
   return (
     <div className="p-8 space-y-6">
+      {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold text-[#1B1A16]">Taluka & Villages</h2>
           <p className="text-sm text-gray-500">Manage your talukas and villages listing</p>
         </div>
-        <button className="flex items-center space-x-2 px-6 py-3 bg-[#1B1A16] text-white rounded-xl font-bold hover:bg-[#2d2c26] transition-all shadow-lg">
+        <button
+          onClick={openAdd}
+          className="flex items-center space-x-2 px-6 py-3 bg-[#1B1A16] text-white rounded-xl font-bold hover:bg-[#2d2c26] transition-all shadow-lg"
+        >
           <Plus size={20} />
           <span>Add New</span>
         </button>
       </div>
 
-      {/* Filters Section */}
+      {/* Filters */}
       <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
         <div className="flex flex-wrap gap-4 items-end">
-          {/* Search */}
-          {/* <div className="relative flex-1 min-w-[200px]">
+          <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
             <input
               type="text"
@@ -504,8 +598,7 @@ const TalukaListingContent = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#FFE400] outline-none transition-all"
             />
-          </div> */}
-          {/* Taluka Dropdown */}
+          </div>
           <div className="space-y-1 min-w-[180px]">
             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Taluka</label>
             <select
@@ -516,7 +609,6 @@ const TalukaListingContent = () => {
               {talukaOptions.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
-          {/* Village Dropdown */}
           <div className="space-y-1 min-w-[180px]">
             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Village</label>
             <select
@@ -530,7 +622,7 @@ const TalukaListingContent = () => {
         </div>
       </div>
 
-      {/* Listing Table */}
+      {/* Table */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
@@ -546,11 +638,7 @@ const TalukaListingContent = () => {
               {talukasLoading ? (
                 <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-400 italic">Loading…</td></tr>
               ) : filteredData.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="px-6 py-12 text-center text-gray-500 italic">
-                    No records found matching your filters.
-                  </td>
-                </tr>
+                <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-500 italic">No records found.</td></tr>
               ) : (
                 filteredData.map((item, index) => (
                   <tr key={item.id} className="hover:bg-gray-50 transition-colors">
@@ -558,14 +646,13 @@ const TalukaListingContent = () => {
                     <td className="px-6 py-4 text-sm font-bold text-gray-900">{item.taluka_name ?? '—'}</td>
                     <td className="px-6 py-4 text-sm text-gray-600">{item.village_name}</td>
                     <td className="px-6 py-4 text-right">
-                      <div className="flex justify-end space-x-2">
-                        <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                          <Edit size={16} />
-                        </button>
-                        <button className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => openEdit(item)}
+                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Edit"
+                      >
+                        <Edit size={16} />
+                      </button>
                     </td>
                   </tr>
                 ))
@@ -573,8 +660,6 @@ const TalukaListingContent = () => {
             </tbody>
           </table>
         </div>
-
-        {/* Pagination Placeholder */}
         <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
           <p className="text-xs text-gray-500">Showing {filteredData.length} of {talukaRows.length} entries</p>
           <div className="flex items-center space-x-2">
@@ -584,6 +669,107 @@ const TalukaListingContent = () => {
           </div>
         </div>
       </div>
+
+      {/* Add / Edit Modal */}
+      <AnimatePresence>
+        {showModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-gray-100"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+                <h3 className="text-lg font-bold text-[#1B1A16]">
+                  {editingRow ? 'Edit Village' : 'Add New Village'}
+                </h3>
+                <button onClick={closeModal} className="p-1 hover:bg-gray-100 rounded-full transition-colors">
+                  <X size={20} className="text-gray-500" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="px-6 py-6 space-y-5">
+                {/* Taluka select */}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-bold text-gray-700">
+                    Taluka <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={formTalukaId}
+                    onChange={(e) => {
+                      setFormTalukaId(e.target.value);
+                      if (e.target.value !== NEW_TALUKA_KEY) setFormNewTalukaName("");
+                    }}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#FFE400] outline-none transition-all"
+                  >
+                    <option value="">— Select Taluka —</option>
+                    {allTalukas.map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                    <option value={NEW_TALUKA_KEY}>➕ Create New Taluka</option>
+                  </select>
+                </div>
+
+                {/* New taluka name — shown only when "Create New" is selected */}
+                {formTalukaId === NEW_TALUKA_KEY && (
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-bold text-gray-700">
+                      New Taluka Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      autoFocus
+                      type="text"
+                      placeholder="Enter taluka name"
+                      value={formNewTalukaName}
+                      onChange={(e) => setFormNewTalukaName(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#FFE400] outline-none transition-all"
+                    />
+                  </div>
+                )}
+
+                {/* Village name */}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-bold text-gray-700">
+                    Village Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Enter village name"
+                    value={formVillageName}
+                    onChange={(e) => setFormVillageName(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#FFE400] outline-none transition-all"
+                  />
+                </div>
+
+                {formError && (
+                  <p className="text-sm text-red-600 bg-red-50 px-4 py-2 rounded-lg">{formError}</p>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-end gap-3 px-6 py-5 border-t border-gray-100">
+                <button
+                  onClick={closeModal}
+                  disabled={formSaving}
+                  className="px-5 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={formSaving}
+                  className="px-6 py-2.5 rounded-xl text-sm font-bold bg-[#1B1A16] text-white hover:bg-[#2d2c26] transition-colors disabled:opacity-60"
+                >
+                  {formSaving ? 'Saving…' : editingRow ? 'Save Changes' : 'Add Village'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
