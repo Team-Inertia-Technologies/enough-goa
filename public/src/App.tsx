@@ -495,7 +495,7 @@ const TalukaListingContent = () => {
       <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
         <div className="flex flex-wrap gap-4 items-end">
           {/* Search */}
-          <div className="relative flex-1 min-w-[200px]">
+          {/* <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
             <input
               type="text"
@@ -504,7 +504,7 @@ const TalukaListingContent = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#FFE400] outline-none transition-all"
             />
-          </div>
+          </div> */}
           {/* Taluka Dropdown */}
           <div className="space-y-1 min-w-[180px]">
             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Taluka</label>
