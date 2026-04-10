@@ -451,12 +451,32 @@ const MessageBatchView = ({ message, onBack }: { message: any; onBack: () => voi
 
 const TalukaListingContent = () => {
   const { rows: talukaRows, loading: talukasLoading } = useTalukas();
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm]       = useState("");
+  const [talukaFilter, setTalukaFilter]   = useState("All");
+  const [villageFilter, setVillageFilter] = useState("All");
 
-  const filteredData = talukaRows.filter(item =>
-    (item.taluka_name ?? "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.village_name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Unique taluka names for the first dropdown
+  const talukaOptions = ["All", ...Array.from(
+    new Set(talukaRows.map(r => r.taluka_name ?? "").filter(Boolean))
+  ).sort()];
+
+  // Village options filtered by selected taluka
+  const villageOptions = ["All", ...talukaRows
+    .filter(r => talukaFilter === "All" || r.taluka_name === talukaFilter)
+    .map(r => r.village_name)
+    .filter(Boolean)
+    .sort()
+    .filter((v, i, arr) => arr.indexOf(v) === i)
+  ];
+
+  const filteredData = talukaRows.filter(item => {
+    const talukaMatch  = talukaFilter  === "All" || item.taluka_name  === talukaFilter;
+    const villageMatch = villageFilter === "All" || item.village_name === villageFilter;
+    const searchMatch  =
+      (item.taluka_name  ?? "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.village_name.toLowerCase().includes(searchTerm.toLowerCase());
+    return talukaMatch && villageMatch && searchMatch;
+  });
 
   return (
     <div className="p-8 space-y-6">
@@ -473,15 +493,40 @@ const TalukaListingContent = () => {
 
       {/* Filters Section */}
       <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-          <input
-            type="text"
-            placeholder="Search taluka or village..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#FFE400] outline-none transition-all"
-          />
+        <div className="flex flex-wrap gap-4 items-end">
+          {/* Search */}
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+            <input
+              type="text"
+              placeholder="Search taluka or village..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#FFE400] outline-none transition-all"
+            />
+          </div>
+          {/* Taluka Dropdown */}
+          <div className="space-y-1 min-w-[180px]">
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Taluka</label>
+            <select
+              value={talukaFilter}
+              onChange={(e) => { setTalukaFilter(e.target.value); setVillageFilter("All"); }}
+              className="w-full px-3 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#FFE400] outline-none transition-all"
+            >
+              {talukaOptions.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          {/* Village Dropdown */}
+          <div className="space-y-1 min-w-[180px]">
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Village</label>
+            <select
+              value={villageFilter}
+              onChange={(e) => setVillageFilter(e.target.value)}
+              className="w-full px-3 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#FFE400] outline-none transition-all"
+            >
+              {villageOptions.map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -1208,6 +1253,7 @@ const TalukaVillageContent = () => {
 
 const CommunicationHubContent = () => {
   const { guests } = useGuests();
+  const { rows: talukaRows } = useTalukas();
   const { batches: messageBatches, loading: batchesLoading, refetch: refetchBatches } = useMessages();
   const [showQR, setShowQR] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -1353,8 +1399,17 @@ const CommunicationHubContent = () => {
     return talukaMatch && villageMatch;
   });
 
-  const talukas = ["All", ...Array.from(new Set(talukaPeople.map(p => p.taluka)))];
-  const villages = ["All", ...Array.from(new Set(talukaPeople.filter(p => selectedTaluka === "All" || p.taluka === selectedTaluka).map(p => p.village)))];
+  // Taluka & village lists from the master table (not derived from guests)
+  const talukas = ["All", ...Array.from(
+    new Set(talukaRows.map(r => r.taluka_name ?? "").filter(Boolean))
+  ).sort()];
+  const villages = ["All", ...talukaRows
+    .filter(r => selectedTaluka === "All" || r.taluka_name === selectedTaluka)
+    .map(r => r.village_name)
+    .filter(Boolean)
+    .sort()
+    .filter((v, i, arr) => arr.indexOf(v) === i)
+  ];
 
   const handleSelectAll = () => {
     const allFilteredIds = filteredPeople.map(p => p.id);
