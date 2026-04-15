@@ -1512,11 +1512,14 @@ const TalukaVillageContent = () => {
   );
 };
 
+const ARONER_TOKEN = 'e4ad6o043t7r5savjd1qq86k';
+const ARONER_BASE  = 'https://wtsapp.aronertech.com/api';
+
 const CommunicationHubContent = () => {
   const { guests } = useGuests();
   const { rows: talukaRows } = useTalukas();
   const { batches: messageBatches, loading: batchesLoading, refetch: refetchBatches } = useMessages();
-  const [showQR, setShowQR] = useState(false);
+  // const [showQR, setShowQR] = useState(false); // QR connect — re-enable when needed
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [step, setStep] = useState(1);
@@ -1641,7 +1644,19 @@ const CommunicationHubContent = () => {
     }
   }
 
-  const [connectedInstance] = useState({ name: "Portal", mobile: "" });
+  const [connectedInstance, setConnectedInstance] = useState<{ name: string; mobile: string }>({ name: '…', mobile: '…' });
+
+  useEffect(() => {
+    fetch(`${ARONER_BASE}/me?token=${ARONER_TOKEN}`)
+      .then(r => r.json())
+      .then((data: Record<string, string>) => {
+        setConnectedInstance({
+          name:   data?.name     ?? data?.pushname ?? '—',
+          mobile: data?.phone    ?? data?.number   ?? '—',
+        });
+      })
+      .catch(() => setConnectedInstance({ name: '—', mobile: '—' }));
+  }, []);
 
   // Derive taluka/village lists from live guests
   const talukaPeopleRaw = guests.map(g => ({
@@ -1707,13 +1722,15 @@ const CommunicationHubContent = () => {
               <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Connected Instance</span>
               <span className="text-sm font-bold text-[#1B1A16]">{connectedInstance.name} ({connectedInstance.mobile})</span>
             </div>
-            <button 
+            {/* QR connect button — re-enable when QR flow is ready
+            <button
               onClick={() => setShowQR(true)}
               className="p-2 hover:bg-gray-100 rounded-full transition-colors text-[#1B1A16]"
               title="Connect Instance"
             >
               <QrCode size={20} />
             </button>
+            */}
           </div>
           
           <button 
@@ -1728,31 +1745,30 @@ const CommunicationHubContent = () => {
         </div>
       </div>
 
-      {/* QR Code Modal */}
+      {/* QR Code Modal — re-enable when QR connect flow is ready
       <AnimatePresence>
         {showQR && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
               className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl relative border-4 border-[#FFE400]"
             >
-              <button 
+              <button
                 onClick={() => setShowQR(false)}
                 className="absolute top-4 right-4 p-1 hover:bg-gray-100 rounded-full transition-colors"
               >
                 <X size={20} />
               </button>
-              
+
               <div className="text-center space-y-6">
                 <div className="space-y-2">
                   <h3 className="text-xl font-bold text-[#1B1A16]">Connect WhatsApp</h3>
                   <p className="text-sm text-gray-500">Scan this QR code with your mobile device to connect your instance.</p>
                 </div>
-                
+
                 <div className="bg-gray-50 p-6 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center aspect-square">
-                  {/* Mock QR Code */}
                   <div className="w-full h-full bg-white p-4 rounded-lg shadow-inner flex items-center justify-center">
                     <div className="grid grid-cols-4 gap-1 w-full h-full opacity-80">
                       {[...Array(16)].map((_, i) => (
@@ -1761,7 +1777,7 @@ const CommunicationHubContent = () => {
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="pt-4">
                   <p className="text-xs text-gray-400">Waiting for connection...</p>
                 </div>
@@ -1770,6 +1786,7 @@ const CommunicationHubContent = () => {
           </div>
         )}
       </AnimatePresence>
+      */}
 
       {/* Create Template Modal */}
       <AnimatePresence>
