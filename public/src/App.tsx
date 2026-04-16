@@ -1647,12 +1647,12 @@ const CommunicationHubContent = () => {
   const [connectedInstance, setConnectedInstance] = useState<{ name: string; mobile: string }>({ name: '…', mobile: '…' });
 
   useEffect(() => {
-    fetch(`${ARONER_BASE}/me?token=${ARONER_TOKEN}`)
+    fetch(`${ARONER_BASE}/checkBal?token=${ARONER_TOKEN}`)
       .then(r => r.json())
-      .then((data: Record<string, string>) => {
+      .then((res: { data?: { profileName?: string; connectedNumeber?: string } }) => {
         setConnectedInstance({
-          name:   data?.name     ?? data?.pushname ?? '—',
-          mobile: data?.phone    ?? data?.number   ?? '—',
+          name:   res?.data?.profileName      ?? '—',
+          mobile: res?.data?.connectedNumeber ?? '—',
         });
       })
       .catch(() => setConnectedInstance({ name: '—', mobile: '—' }));
